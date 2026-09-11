@@ -30,7 +30,9 @@ Use this document as the source of truth for setup. Check each item before handi
 - [x] Bitget skills available to Codex, Claude Code, and OpenCode
 - [x] Bitget signal MCP configured for Codex, Claude Code, and OpenCode
 - [ ] Demo credentials configured through environment variables
-- [ ] Choose execution mode: simulator, Bitget Demo API, or isolated Agentic account
+- [ ] Use local simulator for development/runnable demo
+- [ ] Use Bitget Demo paper trading for competition-period evidence
+- [ ] Do not substitute an Agentic account or local simulation for the required Demo paper log without organizer confirmation
 - [ ] Start competition-period paper runner and record actual start timestamp
 - [ ] Confirm paper logs are written under `artifacts/paper-trading/`
 - [ ] Read-only account verification completed

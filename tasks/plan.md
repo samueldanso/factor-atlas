@@ -64,11 +64,11 @@ Confirm the simulator already satisfies the strict track flow and evidence requi
 
 ## T7 — run competition-period paper evidence and add optional Bitget adapter
 
-- **Scope:** Discover and normalize verified rToken data; add the scheduled/continuous paper-run command; add an optional paper-trading adapter only if Demo credentials are available and explicitly configured.
+- **Scope:** Discover and normalize verified rToken data; add the scheduled/continuous paper-run command; add the Bitget Demo paper-trading adapter required for qualification evidence.
 - **Likely files:** `src/**/adapters/**`, `src/**/runner.py`, `tests/test_adapters.py`, `tests/test_paper_runner.py`, `docs/runbook.md`.
 - **Dependencies:** T5; exact symbol/API confirmation.
-- **Acceptance:** fixtures remain the default demo path; competition-period runs write actual timestamped records under `artifacts/paper-trading/`; adapter failures degrade to a visible rejection/error; no live or withdrawal path exists.
-- **Verification:** mocked HTTP tests, paper-run smoke test, `bgc --read-only` discovery, and `bgc --paper-trading` only when explicitly enabled.
+- **Acceptance:** fixtures remain the default demo path; Bitget Demo competition-period runs write actual timestamped records under `artifacts/paper-trading/`; adapter failures degrade to a visible rejection/error; no live or withdrawal path exists.
+- **Verification:** mocked HTTP tests, Demo paper-run smoke test, `bgc --read-only` discovery, and `bgc --paper-trading` only when explicitly enabled.
 
 ## T8 — package the runnable demo and submission evidence
 

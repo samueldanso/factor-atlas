@@ -41,13 +41,13 @@ Verification: malformed/unsafe proposals and unvalidated LLM decisions are rejec
 ## Gate 4 — Bitget access and competition-period paper run
 
 - Add read-only market adapter if the verified API surface is sufficient.
-- Choose execution mode explicitly: local simulator by default; optional Bitget Demo API key; or optional isolated Agentic account through Agent Hub OAuth.
+- Use the local simulator for deterministic development/demo, but use Bitget Demo paper trading for the required competition-period evidence. An isolated Agentic account is optional and must not replace the Demo paper-log path unless organizers confirm it is accepted.
 - Add a scheduled/continuous paper-run command that starts during the competition window and writes append-only logs under `artifacts/paper-trading/`.
 - Ensure accepted and rejected cycles include all required evidence fields and software/config version.
 - Generate a separate short reproducible demo artifact; do not confuse it with the competition-period log.
 - Document actual model/tool/account mode used for the submission.
 
-Verification: no live path; paper-run smoke test writes valid records; README reproduces the demo and explains how the competition-period log was generated; no simulated backfill is presented as live paper history.
+Verification: no live path; Bitget Demo paper-run smoke test writes valid records; README reproduces the simulator demo and explains how the competition-period Demo log was generated; no simulated backfill is presented as live paper history.
 
 ## Gate 5 — submission packaging
 

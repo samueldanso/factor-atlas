@@ -34,8 +34,8 @@ This is the short deterministic fixture run judges can reproduce. It proves the 
 
 ### Competition-period paper run
 
-This is the separately scheduled run that generates the real paper log. It should use Bitget Demo paper trading when available, or the approved paper-execution path selected in the final implementation. The demo fixture must not be presented as a two-week competition log.
+This is the separately scheduled run that generates the required paper log. It should use Bitget Demo paper trading. A local simulator or Agentic account must not be substituted unless the organizers explicitly confirm that path is accepted for this material. The demo fixture must not be presented as a two-week competition log.
 
 ## Account verification boundary
 
-The UID in the form does not automatically publish our local logs to judges. If judges need to validate execution against Bitget, the submission must provide the relevant public/exported records and explain the account mode used. Do not expose API keys, secrets, passphrases, or private account data.
+The handbook screenshots specify the materials-link review path but do not state that judges can query a Bitget account by UID to retrieve hidden logs. We should therefore assume they review the submitted public/exported records and may inspect or run the linked code. The submission must explain the account mode used, while never exposing API keys, secrets, passphrases, or private account data.
