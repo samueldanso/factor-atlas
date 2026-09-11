@@ -15,7 +15,7 @@ Use this document as the source of truth for setup. Check each item before handi
 - [x] Read permission enabled
 - [x] Trade permission enabled
 - [x] Withdrawal permission disabled
-- [ ] Demo account funded with virtual balance
+- [x] Demo account funded with virtual balance (100,000 USDT verified)
 - [x] Demo credentials stored locally only
 - [x] No credentials stored in Git, `resources/`, screenshots, or chat
 - [ ] Optional: isolated Agentic account evaluated for the final demo
@@ -35,7 +35,7 @@ Use this document as the source of truth for setup. Check each item before handi
 - [ ] Do not substitute an Agentic account or local simulation for the required Demo paper log without organizer confirmation
 - [ ] Start competition-period paper runner and record actual start timestamp
 - [ ] Confirm paper logs are written under `artifacts/paper-trading/`
-- [ ] Read-only Demo account verification completed with `bgc --paper-trading account_overview` (current check still returns an authentication error)
+- [x] Read-only Demo account verification completed with `bgc --paper-trading account_overview`
 - [ ] Public market-data request verified
 - [x] Python 3.11 environment created with `uv`
 - [x] Ruff lint command verified
