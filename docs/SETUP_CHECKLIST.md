@@ -26,6 +26,8 @@ Use this document as the source of truth for setup. Check each item before handi
 - [x] `bgc` CLI available
 - [x] Bitget trading skill installed
 - [x] Bitget signal MCP installed
+- [x] Bitget skills available to Codex, Claude Code, and OpenCode
+- [x] Bitget signal MCP configured for Codex, Claude Code, and OpenCode
 - [ ] Demo credentials configured through environment variables
 - [ ] Read-only account verification completed
 - [ ] Public market-data request verified
