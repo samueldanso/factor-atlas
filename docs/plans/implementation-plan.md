@@ -18,23 +18,25 @@ Verification: saved discovery output and a reviewed interface spec.
 
 Verification: unit tests, Ruff, type check, deterministic replay.
 
-## Gate 2 — risk and paper execution
+## Gate 2 — autonomous orchestration, risk, and paper execution
 
-- Implement risk gates as pure functions.
-- Implement an in-memory paper broker with fee/slippage simulation.
-- Write append-only JSONL audit logs.
-- Add a CLI/demo command that runs the full flow from a fixture.
+- Implement the autonomous cycle runner: observe → propose → evaluate/iterate → decide → gate → execute → learn/log.
+- Implement risk gates as pure functions; a veto must prevent execution and remain visible in the audit trace.
+- Implement an in-memory paper broker with fee/slippage simulation and no approval pause after an accepted paper decision.
+- Write append-only JSONL audit logs with stage IDs and cycle IDs.
+- Add a CLI/demo command that runs multiple fixture cycles, including one accepted order and one rejection.
 
-Verification: complete event → decision → execution trace; rejection cases are visible.
+Verification: complete autonomous event → research → decision → risk → automatic paper execution trace; rejection cases are visible; repeated fixture replay is deterministic.
 
-## Gate 3 — hypothesis agent boundary
+## Gate 3 — hypothesis discovery and LLM decision boundary
 
-- Add a constrained proposer interface.
-- Implement a deterministic fixture proposer first.
-- Add an LLM adapter only behind the interface.
-- Validate every LLM result through the same schema and factor registry.
+- Add a constrained proposer interface that can return multiple hypotheses per cycle.
+- Implement deterministic factor mining/evaluation and a bounded iteration/search budget.
+- Implement a deterministic fixture proposer first, then an LLM proposer behind the same interface.
+- Add an LLM decision interface that can select only from validated candidates and emit a structured trade decision.
+- Validate every proposal and decision through the same schema and factor registry.
 
-Verification: malformed/unsafe proposals are rejected; core tests pass without an LLM key.
+Verification: malformed/unsafe proposals and unvalidated LLM decisions are rejected; the agent autonomously selects an accepted validated candidate; core tests pass without an LLM key.
 
 ## Gate 4 — Bitget and evidence integration
 

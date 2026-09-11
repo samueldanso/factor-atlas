@@ -44,8 +44,10 @@ Use this document as the source of truth for setup. Check each item before handi
 - [ ] Define factor-hypothesis schema
 - [ ] Define deterministic factor calculation
 - [ ] Define validation and walk-forward split
+- [ ] Define autonomous repeated cycle: event → hypothesis mining → validation iteration → decision
 - [ ] Define risk gates
 - [ ] Define paper-trading order schema
+- [ ] Define automatic paper execution after a validated decision (no approval pause)
 - [ ] Define event → decision → execution trace
 - [ ] Define audit log format
 - [ ] Review and approve `docs/specs/technical-spec.md`

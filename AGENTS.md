@@ -101,7 +101,15 @@ BITGET_PASSPHRASE
 
 ### LLM layer
 
-The LLM may propose and explain hypotheses, select deterministic research routines, summarize results, and recommend candidates. It may not generate arbitrary runtime trading code, bypass risk gates, invent data or metrics, place live orders, or turn failed validation into a recommendation.
+The LLM is the agent’s research-orchestration and decision layer. It may propose bounded hypotheses, select deterministic research routines, summarize iterative factor-mining results, and choose a trade only from validated candidates. It may not generate arbitrary runtime trading code, bypass risk gates, invent data or metrics, place live orders, or turn failed validation into a recommendation.
+
+### Mandatory autonomous cycle
+
+The Agentic Trading submission must demonstrate an unattended paper-trading loop:
+
+`observe event → propose hypotheses → mine/evaluate factors → iterate/backtest → select validated candidate → risk gate → automatic paper execution → audit/next cycle`
+
+There must be no human approval pause between a validated decision and paper execution. Deterministic validation, sizing, risk gates, and the paper broker remain authoritative; a gate veto prevents execution. The demo must include both an accepted cycle and a rejected cycle.
 
 ### Deterministic research layer
 

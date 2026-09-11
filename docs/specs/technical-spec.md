@@ -2,13 +2,14 @@
 
 ## Objective
 
-Build a runnable Factor Discovery Agent for Bitget’s Agentic Trading track. Given a market/event snapshot, the system proposes a constrained factor hypothesis, evaluates it through deterministic research code, applies risk gates, and records a paper-trading decision. The LLM explains and ranks hypotheses; it never emits arbitrary executable trading code.
+Build a runnable Factor Discovery Agent for Bitget’s Agentic Trading track. Given a market/event snapshot, the agent autonomously proposes constrained factor hypotheses, mines and evaluates them through deterministic research code, selects a validated candidate, applies risk gates, and automatically executes the resulting decision in paper trading. The LLM is the decision-making/orchestration layer; it never emits arbitrary executable trading code or bypasses deterministic controls.
 
 ## Competition contract
 
 - Track: Agentic Trading
 - Sub-theme: Factor Discovery Agent
 - Required demonstration: runnable demo with event → decision → execution flow
+- Strict track behavior: autonomous event → research/hypothesis → iterative validation → decision → risk gate → paper execution loop; no human approval is required between validation and paper execution
 - Evidence: paper-trading log with timestamp, instrument, direction, price, quantity, and balance change
 - Execution mode: deterministic simulator first; Bitget Demo adapter optional
 
@@ -31,20 +32,33 @@ Do not add an LLM framework until the agent boundary is clear. A small provider 
 ```text
 market/event inputs
         ↓
-normalizer + snapshot manifest
+event normalizer + snapshot manifest
         ↓
-constrained hypothesis proposer (LLM or fixture)
+research loop: propose hypotheses → mine/evaluate registered factors → iterate/backtest
         ↓
-deterministic factor registry + validator
+LLM selects a validated candidate and emits a structured trade decision
         ↓
-risk gates
+deterministic risk gates (may veto)
         ↓
-paper executor
+automatic paper executor (no approval pause)
         ↓
-append-only audit log + demo output
+append-only audit log + next-cycle state + demo output
 ```
 
-The deterministic path must run with a fixture and no credentials. Every external adapter must be replaceable by a fixture provider.
+The deterministic path must run with a fixture and no credentials. Every external adapter must be replaceable by a fixture provider. The demo must show at least one accepted autonomous cycle and one rejected cycle, with the same orchestrator handling both.
+
+### Autonomous cycle contract
+
+The runner must execute these stages in order:
+
+1. **Observe:** ingest a timestamped market/event snapshot.
+2. **Discover:** ask the proposer to generate bounded hypotheses from the registered factor vocabulary; evaluate candidates with deterministic code and iterate until the configured search budget is exhausted or a candidate passes validation.
+3. **Decide:** have the LLM choose among validated candidates and emit a structured side, instrument, quantity, and rationale; no validated candidate means no order.
+4. **Control:** apply deterministic sizing, exposure, freshness, loss, duplicate, and concentration gates. A veto is final and is logged.
+5. **Execute:** automatically submit an accepted decision to the in-memory paper broker and record the resulting fill/balance change.
+6. **Learn:** persist the cycle trace and bounded outcome summary so the next replayable cycle can use prior outcomes without mutating the factor registry.
+
+The LLM may choose and explain a validated candidate, but factor calculation, validation metrics, sizing, gate outcomes, and execution are deterministic and auditable.
 
 ## Core contracts
 
@@ -82,7 +96,9 @@ Minimum gates: factor allowlist, data freshness, minimum sample size, validation
 2. A fixture event produces a complete trace and either a valid paper order or a logged rejection.
 3. The LLM cannot introduce a factor outside the registry or bypass a gate.
 4. No live order path exists in the MVP.
-5. The demo clearly shows the event, proposed factor, validation, risk decision, and simulated execution.
+5. The demo clearly shows an autonomous accepted cycle: event, proposed hypotheses, iterative factor evaluation/backtest, LLM-selected validated candidate, risk decision, automatic simulated execution, and audit record.
+6. The demo also shows a rejected cycle where a risk or validation gate prevents execution and records why.
+7. The runner can execute multiple fixture cycles without manual intervention and produces deterministic replay output for the same inputs/configuration.
 
 ## Open questions
 
