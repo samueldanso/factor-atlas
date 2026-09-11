@@ -35,7 +35,7 @@ Use this document as the source of truth for setup. Check each item before handi
 - [ ] Do not substitute an Agentic account or local simulation for the required Demo paper log without organizer confirmation
 - [ ] Start competition-period paper runner and record actual start timestamp
 - [ ] Confirm paper logs are written under `artifacts/paper-trading/`
-- [x] Read-only Demo account verification completed with `bgc --paper-trading account_overview`
+- [ ] Read-only Demo account verification completed with `bgc --paper-trading account_overview` (current check still returns an authentication error)
 - [ ] Public market-data request verified
 - [x] Python 3.11 environment created with `uv`
 - [x] Ruff lint command verified
