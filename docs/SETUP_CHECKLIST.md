@@ -9,15 +9,15 @@ Use this document as the source of truth for setup. Check each item before handi
 
 ## 1. Bitget web setup
 
-- [ ] Bitget account logged in
-- [ ] Demo Trading mode enabled
-- [ ] Demo API key created
-- [ ] Read permission enabled
-- [ ] Trade permission enabled
-- [ ] Withdrawal permission disabled
+- [x] Bitget account logged in
+- [x] Demo Trading mode enabled
+- [x] Demo API key created (`factor-atlas-demo`)
+- [x] Read permission enabled
+- [x] Trade permission enabled
+- [x] Withdrawal permission disabled
 - [ ] Demo account funded with virtual balance
-- [ ] Demo credentials stored locally only
-- [ ] No credentials stored in Git, `resources/`, screenshots, or chat
+- [x] Demo credentials stored locally only
+- [x] No credentials stored in Git, `resources/`, screenshots, or chat
 - [ ] Optional: isolated Agentic account evaluated for the final demo
 
 ## 2. Local tools
@@ -29,13 +29,13 @@ Use this document as the source of truth for setup. Check each item before handi
 - [x] Bitget signal MCP installed
 - [x] Bitget skills available to Codex, Claude Code, and OpenCode
 - [x] Bitget signal MCP configured for Codex, Claude Code, and OpenCode
-- [ ] Demo credentials configured through environment variables
+- [x] Demo credentials configured through environment variables in local `.env`
 - [ ] Use local simulator for development/runnable demo
 - [ ] Use Bitget Demo paper trading for competition-period evidence
 - [ ] Do not substitute an Agentic account or local simulation for the required Demo paper log without organizer confirmation
 - [ ] Start competition-period paper runner and record actual start timestamp
 - [ ] Confirm paper logs are written under `artifacts/paper-trading/`
-- [ ] Read-only account verification completed
+- [x] Read-only Demo account verification completed with `bgc --paper-trading account_overview`
 - [ ] Public market-data request verified
 - [x] Python 3.11 environment created with `uv`
 - [x] Ruff lint command verified
