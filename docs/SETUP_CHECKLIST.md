@@ -29,8 +29,9 @@ Use this document as the source of truth for setup. Check each item before handi
 - [ ] Demo credentials configured through environment variables
 - [ ] Read-only account verification completed
 - [ ] Public market-data request verified
-- [ ] Python environment created with `uv`
-- [ ] Test and lint commands configured
+- [x] Python 3.11 environment created with `uv`
+- [x] Ruff lint command verified
+- [ ] Test suite exists and passes
 
 ## 3. FactorAtlas implementation prerequisites
 
