@@ -30,6 +30,9 @@ Use this document as the source of truth for setup. Check each item before handi
 - [x] Bitget skills available to Codex, Claude Code, and OpenCode
 - [x] Bitget signal MCP configured for Codex, Claude Code, and OpenCode
 - [ ] Demo credentials configured through environment variables
+- [ ] Choose execution mode: simulator, Bitget Demo API, or isolated Agentic account
+- [ ] Start competition-period paper runner and record actual start timestamp
+- [ ] Confirm paper logs are written under `artifacts/paper-trading/`
 - [ ] Read-only account verification completed
 - [ ] Public market-data request verified
 - [x] Python 3.11 environment created with `uv`
@@ -57,6 +60,8 @@ Use this document as the source of truth for setup. Check each item before handi
 
 - [ ] Runnable demo
 - [ ] Paper-trading log
+- [ ] Paper log actually run during the competition period (target ≥2 weeks where feasible)
+- [ ] Paper log contains accepted and rejected cycles with required evidence fields
 - [ ] Complete event → decision → execution flow
 - [ ] Public repository with README
 - [ ] Demo video, preferably three minutes or less

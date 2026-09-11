@@ -88,6 +88,8 @@ The layers are separate:
 - Credentials may exist only in the user’s local environment or approved secret store, never Git, `resources/`, screenshots, logs, or fixtures.
 - Do not use the existing Season 1 `GetAgent - Playbook` key; its environment is unconfirmed.
 - A separate Demo API key is optional for authenticated paper-trading verification. An Agentic account is optional for a final autonomous-execution demo.
+- Playbook login/key/subaccount is not required for FactorAtlas. Use Playbook for Alpha Factory research only; do not use a Playbook credential as a substitute for Agentic paper-execution evidence.
+- The competition-period paper runner must write actual run records under `artifacts/paper-trading/`. Never manufacture or backfill competition-period history from fixtures.
 
 Expected local variable names:
 

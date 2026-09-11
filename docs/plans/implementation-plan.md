@@ -38,18 +38,20 @@ Verification: complete autonomous event → research → decision → risk → a
 
 Verification: malformed/unsafe proposals and unvalidated LLM decisions are rejected; the agent autonomously selects an accepted validated candidate; core tests pass without an LLM key.
 
-## Gate 4 — Bitget and evidence integration
+## Gate 4 — Bitget access and competition-period paper run
 
 - Add read-only market adapter if the verified API surface is sufficient.
-- Add Demo paper adapter only with explicit user approval.
-- Generate paper logs and a reproducible demo artifact.
-- Document actual model/tool usage for the submission.
+- Choose execution mode explicitly: local simulator by default; optional Bitget Demo API key; or optional isolated Agentic account through Agent Hub OAuth.
+- Add a scheduled/continuous paper-run command that starts during the competition window and writes append-only logs under `artifacts/paper-trading/`.
+- Ensure accepted and rejected cycles include all required evidence fields and software/config version.
+- Generate a separate short reproducible demo artifact; do not confuse it with the competition-period log.
+- Document actual model/tool/account mode used for the submission.
 
-Verification: no live path; logs contain all required fields; README reproduces the demo.
+Verification: no live path; paper-run smoke test writes valid records; README reproduces the demo and explains how the competition-period log was generated; no simulated backfill is presented as live paper history.
 
 ## Gate 5 — submission packaging
 
 - Record observed metrics and limitations.
-- Prepare public repository and short demo video.
+- Prepare public repository, paper-log export/link, and short demo video.
 - Draft the form description from actual implementation results.
 - Publish the compliant X post only after the demo is stable.

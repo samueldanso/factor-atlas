@@ -4,7 +4,7 @@ This plan is dependency-ordered for the Factor Discovery Agent. It is intentiona
 
 ## Dependency graph
 
-`T1 contracts/fixtures → T2 factor registry/metrics → T3 autonomous cycle → T4 risk/paper broker → T5 audit/replay → T6 LLM boundary → T7 Bitget adapter → T8 demo/evidence`
+`T1 contracts/fixtures → T2 factor registry/metrics → T3 autonomous cycle → T4 risk/paper broker → T5 audit/replay → T6 LLM boundary → T7 competition-period paper runner/optional Bitget adapter → T8 demo/evidence`
 
 ## T1 — establish typed contracts and fixture event stream
 
@@ -62,20 +62,20 @@ Confirm the simulator already satisfies the strict track flow and evidence requi
 - **Acceptance:** LLM output is schema-validated, limited to registered factors and validated candidates, and never controls gate outcomes or raw order placement.
 - **Verification:** malformed-output tests, unvalidated-candidate test, credential-free fixture run.
 
-## T7 — add read-only market data and optional Bitget Demo adapter
+## T7 — run competition-period paper evidence and add optional Bitget adapter
 
-- **Scope:** Discover and normalize verified rToken data; add an optional paper-trading adapter only if Demo credentials are available and explicitly configured.
-- **Likely files:** `src/**/adapters/**`, `tests/test_adapters.py`, `docs/runbook.md`.
+- **Scope:** Discover and normalize verified rToken data; add the scheduled/continuous paper-run command; add an optional paper-trading adapter only if Demo credentials are available and explicitly configured.
+- **Likely files:** `src/**/adapters/**`, `src/**/runner.py`, `tests/test_adapters.py`, `tests/test_paper_runner.py`, `docs/runbook.md`.
 - **Dependencies:** T5; exact symbol/API confirmation.
-- **Acceptance:** fixtures remain the default; adapter failures degrade to a visible rejection/error; no live or withdrawal path exists.
-- **Verification:** mocked HTTP tests, `bgc --read-only` discovery, and `bgc --paper-trading` only when explicitly enabled.
+- **Acceptance:** fixtures remain the default demo path; competition-period runs write actual timestamped records under `artifacts/paper-trading/`; adapter failures degrade to a visible rejection/error; no live or withdrawal path exists.
+- **Verification:** mocked HTTP tests, paper-run smoke test, `bgc --read-only` discovery, and `bgc --paper-trading` only when explicitly enabled.
 
 ## T8 — package the runnable demo and submission evidence
 
-- **Scope:** Add CLI demo, README run command, accepted/rejected recordings, paper logs, model/tool disclosure, and short demo script.
+- **Scope:** Add CLI demo, README run command, accepted/rejected recordings, competition-period paper-log export/link, model/tool/account-mode disclosure, and short demo script.
 - **Likely files:** `src/**/cli.py`, `README.md`, `docs/demo-script.md`, `artifacts/**`.
 - **Dependencies:** T1–T7, with T7 optional.
-- **Acceptance:** a clean checkout runs the complete autonomous demo; evidence includes timestamp, instrument, direction, price, quantity, balance change, and rejection reason.
+- **Acceptance:** a clean checkout runs the complete autonomous demo; separate paper evidence includes actual competition-period records with timestamp, instrument, direction, price, quantity, balance change, and rejection reason.
 - **Verification:** `uv sync`, `uv run pytest`, Ruff, type check, clean checkout smoke run.
 
 ## Human review gate
