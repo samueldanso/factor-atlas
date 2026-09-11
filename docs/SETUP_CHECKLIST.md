@@ -18,6 +18,7 @@ Use this document as the source of truth for setup. Check each item before handi
 - [ ] Demo account funded with virtual balance
 - [ ] Demo credentials stored locally only
 - [ ] No credentials stored in Git, `resources/`, screenshots, or chat
+- [ ] Optional: isolated Agentic account evaluated for the final demo
 
 ## 2. Local tools
 
@@ -47,6 +48,8 @@ Use this document as the source of truth for setup. Check each item before handi
 - [ ] Define paper-trading order schema
 - [ ] Define event → decision → execution trace
 - [ ] Define audit log format
+- [ ] Review and approve `docs/specs/technical-spec.md`
+- [ ] Review and approve `docs/plans/implementation-plan.md`
 
 ## 4. Required competition evidence
 

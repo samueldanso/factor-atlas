@@ -23,3 +23,13 @@ Build an autonomous factor-discovery agent for 24/7 tokenized US-stock markets. 
 - Live trading.
 - Withdrawals or transfers.
 - Unbounded LLM-generated trading code.
+
+## Research and platform decisions
+
+- Agentic Trading is best demonstrated with Agent Hub Tools + MCP and, if authenticated execution is needed, an isolated Bitget Agentic account.
+- The MVP must work without credentials through a deterministic paper broker.
+- A Demo API key is optional for authenticated paper-trading verification; the existing Season 1 `GetAgent - Playbook` key is not assumed safe or reusable.
+- `bitget-signal` research skills/MCP provide perception context but do not replace deterministic validation or risk gates.
+- `resources/agent_hub/` is the local official reference. `resources/helios-terminal/` is an architectural reference only.
+
+See `docs/specs/technical-spec.md` and `docs/plans/implementation-plan.md` for the implementation contract.
