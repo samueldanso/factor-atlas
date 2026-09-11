@@ -62,6 +62,8 @@ Use this document as the source of truth for setup. Check each item before handi
 - [ ] Paper-trading log
 - [ ] Paper log actually run during the competition period (target ≥2 weeks where feasible)
 - [ ] Paper log contains accepted and rejected cycles with required evidence fields
+- [ ] Paper-log manifest records actual start/end timestamps, timezone, code commit, and config hash
+- [ ] Public paper-log/export link prepared for the form's Submission Materials Link field
 - [ ] Complete event → decision → execution flow
 - [ ] Public repository with README
 - [ ] Demo video, preferably three minutes or less

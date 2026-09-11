@@ -78,6 +78,8 @@ Confirm the simulator already satisfies the strict track flow and evidence requi
 - **Acceptance:** a clean checkout runs the complete autonomous demo; separate paper evidence includes actual competition-period records with timestamp, instrument, direction, price, quantity, balance change, and rejection reason.
 - **Verification:** `uv sync`, `uv run pytest`, Ruff, type check, clean checkout smoke run.
 
+The final materials must be labeled for the single Submission Materials Link field: project/demo, paper log/export, runbook/README, optional video, and X post. Add a paper-run manifest with actual dates, timezone, commit, and configuration hash.
+
 ## Human review gate
 
 OpenCode must stop after this plan is accepted and before implementing T1. For every task it must report the spec section, files touched, acceptance criteria, tests, external-data assumptions, and credential mode.
