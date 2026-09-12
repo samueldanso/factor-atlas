@@ -1,10 +1,10 @@
 # FactorAtlas Task Plan
 
-This plan is dependency-ordered for the Factor Discovery Agent. It is intentionally implementation-ready but keeps unresolved Bitget/API choices behind adapters. The simulator is the mandatory path; authenticated Demo access is optional.
+This plan is dependency-ordered for the Factor Discovery Agent. It is intentionally implementation-ready but keeps Bitget/API details behind adapters. The simulator is mandatory for deterministic development; authenticated Bitget Demo stock-perp execution is mandatory for competition-period qualification evidence.
 
 ## Dependency graph
 
-`T1 contracts/fixtures → T2 factor registry/metrics → T3 autonomous cycle → T4 risk/paper broker → T5 audit/replay → T6 LLM boundary → T7 competition-period paper runner/optional Bitget adapter → T8 demo/evidence`
+`T1 contracts/fixtures → T2 factor registry/metrics → T3 autonomous cycle → T4 risk/paper broker → T5 audit/replay → T6 LLM boundary → T7 competition-period Demo stock-perp runner → T8 demo/evidence`
 
 ## T1 — establish typed contracts and fixture event stream
 
@@ -52,7 +52,7 @@ Confirm the cycle genuinely demonstrates `event → hypothesis mining → iterat
 
 ### Checkpoint B — review before external adapters
 
-Confirm the simulator already satisfies the strict track flow and evidence requirements without any Bitget credential.
+Confirm the simulator satisfies the deterministic runnable-demo flow. Do not treat it as a replacement for the competition-period Bitget Demo paper log.
 
 ## T6 — connect the LLM behind safe interfaces
 
@@ -62,19 +62,19 @@ Confirm the simulator already satisfies the strict track flow and evidence requi
 - **Acceptance:** LLM output is schema-validated, limited to registered factors and validated candidates, and never controls gate outcomes or raw order placement.
 - **Verification:** malformed-output tests, unvalidated-candidate test, credential-free fixture run.
 
-## T7 — run competition-period paper evidence and add optional Bitget adapter
+## T7 — run competition-period paper evidence and add Bitget Demo stock-perp adapter
 
-- **Scope:** Discover and normalize verified rToken data; add the scheduled/continuous paper-run command; add the Bitget Demo paper-trading adapter required for qualification evidence.
+- **Scope:** Discover and normalize the verified Demo-supported stock-perp universe; add the scheduled/continuous paper-run command; add the Bitget Demo paper-trading adapter required for qualification evidence. Keep any rToken comparison adapter separate from qualification metrics.
 - **Likely files:** `src/**/adapters/**`, `src/**/runner.py`, `tests/test_adapters.py`, `tests/test_paper_runner.py`, `docs/runbook.md`.
 - **Dependencies:** T5; exact symbol/API confirmation.
-- **Acceptance:** fixtures remain the default demo path; Bitget Demo competition-period runs write actual timestamped records under `artifacts/paper-trading/`; adapter failures degrade to a visible rejection/error; no live or withdrawal path exists.
+- **Acceptance:** fixtures remain the default credential-free demo path; Bitget Demo competition-period runs write actual timestamped records under `artifacts/paper-trading/`; qualification metrics and order records use the same stock-perp universe; adapter failures degrade to a visible rejection/error; no live or withdrawal path exists.
 - **Verification:** mocked HTTP tests, Demo paper-run smoke test, `bgc --read-only` discovery, and `bgc --paper-trading` only when explicitly enabled.
 
 ## T8 — package the runnable demo and submission evidence
 
 - **Scope:** Add CLI demo, README run command, accepted/rejected recordings, competition-period paper-log export/link, model/tool/account-mode disclosure, and short demo script.
 - **Likely files:** `src/**/cli.py`, `README.md`, `docs/demo-script.md`, `artifacts/**`.
-- **Dependencies:** T1–T7, with T7 optional.
+- **Dependencies:** T1–T7.
 - **Acceptance:** a clean checkout runs the complete autonomous demo; separate paper evidence includes actual competition-period records with timestamp, instrument, direction, price, quantity, balance change, and rejection reason.
 - **Verification:** `uv sync`, `uv run pytest`, Ruff, type check, clean checkout smoke run.
 

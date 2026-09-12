@@ -2,10 +2,10 @@
 
 ## Gate 0 — confirm data and interfaces
 
-- Inspect Bitget market discovery for supported rToken instruments.
-- Confirm candle granularity, history, and symbol naming.
+- Inspect Bitget market discovery for the Demo-supported US-stock perpetual universe. Keep Reality rToken discovery as optional comparison research, not the qualification execution universe.
+- Confirm candle granularity, history, symbol naming, and the exact `USDT-FUTURES` order contract.
 - Freeze the normalized market snapshot contract.
-- Decide whether the first demo uses fixtures only or also a Demo adapter.
+- Confirm the first runnable demo uses fixtures and the competition runner uses the Bitget Demo adapter.
 
 Verification: saved discovery output and a reviewed interface spec.
 
@@ -40,10 +40,11 @@ Verification: malformed/unsafe proposals and unvalidated LLM decisions are rejec
 
 ## Gate 4 — Bitget access and competition-period paper run
 
-- Add read-only market adapter if the verified API surface is sufficient.
-- Use the local simulator for deterministic development/demo, but use Bitget Demo paper trading for the required competition-period evidence. An isolated Agentic account is optional and must not replace the Demo paper-log path unless organizers confirm it is accepted.
+- Add the verified USDT-FUTURES stock-perp market adapter and normalize the same instruments used for execution.
+- Use the local simulator for deterministic development/demo, but use Bitget Demo stock-perp paper trading for the required competition-period evidence. An isolated Agentic account is optional and must not replace the Demo paper-log path unless organizers confirm it is accepted.
 - Add a scheduled/continuous paper-run command that starts during the competition window and writes append-only logs under `artifacts/paper-trading/`.
 - Ensure accepted and rejected cycles include all required evidence fields and software/config version.
+- Keep any rToken comparison data in a separate artifact and never combine its metrics with stock-perp paper results.
 - Generate a separate short reproducible demo artifact; do not confuse it with the competition-period log.
 - Document actual model/tool/account mode used for the submission.
 

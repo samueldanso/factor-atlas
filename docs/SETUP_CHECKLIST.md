@@ -29,34 +29,36 @@ Use this document as the source of truth for setup. Check each item before handi
 - [x] Bitget signal MCP installed
 - [x] Bitget skills available to Codex, Claude Code, and OpenCode
 - [x] Bitget signal MCP configured for Codex, Claude Code, and OpenCode
-- [x] Demo credentials configured through environment variables in local `.env`
-- [ ] Use local simulator for development/runnable demo
-- [ ] Use Bitget Demo paper trading for competition-period evidence
-- [ ] Do not substitute an Agentic account or local simulation for the required Demo paper log without organizer confirmation
+- [x] Separate Demo credentials configured through environment variables in local `.env`
+- [x] Use local simulator for development/runnable demo
+- [x] Use Bitget Demo paper trading for competition-period evidence (stock perps AAPLUSDT/NVDAUSDT USDT-FUTURES — rToken SPOT Demo returns 404, confirmed by testing)
+- [x] Do not substitute an Agentic account or local simulation for the required Demo paper log without organizer confirmation
 - [ ] Start competition-period paper runner and record actual start timestamp
 - [ ] Confirm paper logs are written under `artifacts/paper-trading/`
 - [x] Read-only Demo account verification completed with `bgc --paper-trading account_overview`
-- [ ] Public market-data request verified
+- [x] Public market-data request verified (SPOT `RAAPLUSDT` instrument, ticker, and history)
+- [x] Demo-supported stock-perp instrument and order path verified (`NVDAUSDT` USDT-FUTURES)
 - [x] Python 3.11 environment created with `uv`
 - [x] Ruff lint command verified
 - [ ] Test suite exists and passes
 
 ## 3. FactorAtlas implementation prerequisites
 
-- [ ] Discover supported rToken instruments
-- [ ] Confirm available candle history
-- [ ] Define market-data adapter
-- [ ] Define factor-hypothesis schema
-- [ ] Define deterministic factor calculation
-- [ ] Define validation and walk-forward split
-- [ ] Define autonomous repeated cycle: event → hypothesis mining → validation iteration → decision
-- [ ] Define risk gates
-- [ ] Define paper-trading order schema
-- [ ] Define automatic paper execution after a validated decision (no approval pause)
-- [ ] Define event → decision → execution trace
-- [ ] Define audit log format
-- [ ] Review and approve `docs/specs/technical-spec.md`
-- [ ] Review and approve `docs/plans/implementation-plan.md`
+- [x] Discover supported rToken instruments (`RAAPLUSDT` returned online with `isReality=yes`; optional comparison data)
+- [x] Confirm available candle history (approximately 90 daily candles returned)
+- [x] Discover Demo-supported stock-perp execution universe (`AAPLUSDT`, `NVDAUSDT`, `TSLAUSDT`, `METAUSDT` verified as USDT-FUTURES candidates)
+- [x] Define market-data adapter
+- [x] Define factor-hypothesis schema
+- [x] Define deterministic factor calculation
+- [x] Define validation and walk-forward split
+- [x] Define autonomous repeated cycle: event → hypothesis mining → validation iteration → decision
+- [x] Define risk gates
+- [x] Define paper-trading order schema
+- [x] Define automatic paper execution after a validated decision (no approval pause)
+- [x] Define event → decision → execution trace
+- [x] Define audit log format
+- [x] Review and approve `docs/specs/technical-spec.md`
+- [x] Review and approve `docs/plans/implementation-plan.md`
 
 ## 4. Required competition evidence
 
