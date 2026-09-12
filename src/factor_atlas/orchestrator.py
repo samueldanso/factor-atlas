@@ -1,4 +1,4 @@
-"""Autonomous cycle runner: observe → propose → evaluate → decide."""
+"""Autonomous cycle runner: observe -> propose -> evaluate -> decide -> gate -> execute."""
 
 from __future__ import annotations
 
@@ -8,14 +8,18 @@ from uuid import NAMESPACE_DNS, uuid5
 
 import pandas as pd
 
+from factor_atlas.broker import BrokerState, execute_paper_order
 from factor_atlas.contracts import (
     FactorHypothesis,
     MarketSnapshot,
+    PaperOrder,
+    RiskGateResult,
     TradeDecision,
     ValidationResult,
 )
 from factor_atlas.decision import DecisionProvider
 from factor_atlas.proposer import Proposer
+from factor_atlas.risk import RiskConfig, run_gates
 from factor_atlas.validation import validate_factor
 
 _NS = NAMESPACE_DNS
@@ -41,6 +45,8 @@ class CycleResult:
     validated: list[tuple[FactorHypothesis, ValidationResult]]
     decision: TradeDecision | None
     status: Literal["accepted", "no_candidate", "no_hypothesis"]
+    gate_results: list[RiskGateResult] | None = None
+    order: PaperOrder | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -54,8 +60,10 @@ def run_cycle(
     proposer: Proposer,
     decision_provider: DecisionProvider,
     search_budget: int = 5,
+    broker_state: BrokerState | None = None,
+    risk_config: RiskConfig | None = None,
 ) -> CycleResult:
-    """Run one autonomous cycle: observe → propose → evaluate → decide.
+    """Run one autonomous cycle: observe -> propose -> evaluate -> decide -> gate -> execute.
 
     No human approval pause. The cycle proceeds deterministically.
     """
@@ -112,6 +120,50 @@ def run_cycle(
 
     decision = decision_provider.decide(snapshot, validated, cycle_id)
 
+    if decision is None:
+        return CycleResult(
+            cycle_id=cycle_id,
+            snapshot=snapshot,
+            hypotheses=hypotheses,
+            evaluations=evaluations,
+            validated=validated,
+            decision=None,
+            status="no_candidate",
+        )
+
+    # 6. Gate + Execute (if broker_state is provided)
+    gate_results: list[RiskGateResult] | None = None
+    order: PaperOrder | None = None
+
+    if broker_state is not None:
+        cfg = risk_config or RiskConfig()
+        # Find the hypothesis for this decision to get factor_name
+        factor_name = ""
+        best_validation: ValidationResult | None = None
+        for hyp, val in validated:
+            if hyp.hypothesis_id == decision.hypothesis_id:
+                factor_name = hyp.factor_name
+                best_validation = val
+                break
+
+        if best_validation is not None:
+            gate_results = run_gates(
+                decision=decision,
+                validation=best_validation,
+                snapshot=snapshot,
+                broker_state=broker_state,
+                config=cfg,
+                factor_name=factor_name,
+                event_id=decision.decision_id,
+            )
+
+            order = execute_paper_order(
+                decision=decision,
+                gate_results=gate_results,
+                broker_state=broker_state,
+                event_id=decision.decision_id,
+            )
+
     return CycleResult(
         cycle_id=cycle_id,
         snapshot=snapshot,
@@ -120,6 +172,8 @@ def run_cycle(
         validated=validated,
         decision=decision,
         status="accepted" if decision is not None else "no_candidate",
+        gate_results=gate_results,
+        order=order,
     )
 
 
@@ -134,6 +188,8 @@ def run_cycles(
     proposer: Proposer,
     decision_provider: DecisionProvider,
     search_budget: int = 5,
+    broker_state: BrokerState | None = None,
+    risk_config: RiskConfig | None = None,
 ) -> list[CycleResult]:
     """Run multiple autonomous cycles without human approval between them.
 
@@ -147,6 +203,8 @@ def run_cycles(
             proposer=proposer,
             decision_provider=decision_provider,
             search_budget=search_budget,
+            broker_state=broker_state,
+            risk_config=risk_config,
         )
         results.append(result)
     return results
