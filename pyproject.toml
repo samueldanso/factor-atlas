@@ -23,6 +23,7 @@ packages = ["src/factor_atlas"]
 [dependency-groups]
 dev = [
     "mypy>=2.3.1",
+    "pandas-stubs>=3.0.5.260730",
 ]
 
 [tool.pytest.ini_options]
