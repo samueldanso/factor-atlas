@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 INSTRUMENTS: frozenset[str] = frozenset(
     {"AAPLUSDT", "NVDAUSDT", "TSLAUSDT", "METAUSDT"}
 )
 
-CATEGORY: str = "USDT-FUTURES"
+CATEGORY: Literal["USDT-FUTURES"] = "USDT-FUTURES"
 
 FACTOR_VOCABULARY: frozenset[str] = frozenset(
     {

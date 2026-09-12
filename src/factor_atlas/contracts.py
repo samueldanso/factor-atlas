@@ -81,7 +81,7 @@ class MarketSnapshot(BaseModel):
     timestamp: datetime
     snapshot_id: str
     instrument: InstrumentType
-    category: CategoryType = CATEGORY  # type: ignore[assignment]
+    category: CategoryType = CATEGORY
     open: Decimal
     high: Decimal
     low: Decimal
@@ -317,7 +317,7 @@ class PaperOrder(BaseModel):
     event_id: str
     timestamp: datetime
     instrument: InstrumentType
-    category: CategoryType = CATEGORY  # type: ignore[assignment]
+    category: CategoryType = CATEGORY
     side: SideType
     price: Decimal
     quantity: Decimal
@@ -325,7 +325,9 @@ class PaperOrder(BaseModel):
     pre_balance: Decimal
     post_balance: Decimal
     fees: Decimal
+    fees_label: MetricLabelType = "estimated"
     slippage: Decimal
+    slippage_label: MetricLabelType = "estimated"
     status: OrderStatusType
     rejection_reason: str | None = None
     fill_price: Decimal | None = None
