@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import NAMESPACE_DNS, uuid5
 
 import pandas as pd
@@ -21,6 +21,9 @@ from factor_atlas.decision import DecisionProvider
 from factor_atlas.proposer import Proposer
 from factor_atlas.risk import RiskConfig, run_gates
 from factor_atlas.validation import validate_factor
+
+if TYPE_CHECKING:
+    from factor_atlas.audit import AuditLogger
 
 _NS = NAMESPACE_DNS
 
@@ -190,10 +193,12 @@ def run_cycles(
     search_budget: int = 5,
     broker_state: BrokerState | None = None,
     risk_config: RiskConfig | None = None,
+    audit_logger: AuditLogger | None = None,
 ) -> list[CycleResult]:
     """Run multiple autonomous cycles without human approval between them.
 
     Each cycle is independent. No pause between cycles.
+    If *audit_logger* is provided, each cycle is logged automatically.
     """
     results: list[CycleResult] = []
     for snapshot in snapshots:
@@ -207,6 +212,8 @@ def run_cycles(
             risk_config=risk_config,
         )
         results.append(result)
+        if audit_logger is not None:
+            audit_logger.log_cycle(result)
     return results
 
 
