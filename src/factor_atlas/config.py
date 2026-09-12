@@ -4,10 +4,33 @@ from __future__ import annotations
 
 from typing import Literal
 
-INSTRUMENTS: frozenset[str] = frozenset(
+# rToken SPOT instruments — used for market data and factor research.
+# These are the Reality-tokenized US stocks that trade 7×24 on Bitget.
+RESEARCH_INSTRUMENTS: frozenset[str] = frozenset(
+    {"RAAPLUSDT", "RNVDAUSDT", "RTSLAUSDT", "RMETAUSDT"}
+)
+
+# Stock perp instruments — used for Bitget Demo order execution only.
+# rToken SPOT demo trading is unavailable (HTTP 404 on place-reality-order).
+EXECUTION_INSTRUMENTS: frozenset[str] = frozenset(
     {"AAPLUSDT", "NVDAUSDT", "TSLAUSDT", "METAUSDT"}
 )
 
+# All valid instruments (research + execution)
+INSTRUMENTS: frozenset[str] = RESEARCH_INSTRUMENTS | EXECUTION_INSTRUMENTS
+
+# Mapping: rToken research instrument → stock perp execution instrument
+RESEARCH_TO_EXECUTION: dict[str, str] = {
+    "RAAPLUSDT": "AAPLUSDT",
+    "RNVDAUSDT": "NVDAUSDT",
+    "RTSLAUSDT": "TSLAUSDT",
+    "RMETAUSDT": "METAUSDT",
+}
+
+# Category for rToken market data (SPOT candles endpoint)
+RESEARCH_CATEGORY: Literal["SPOT"] = "SPOT"
+
+# Category for Bitget Demo order execution (USDT-FUTURES)
 CATEGORY: Literal["USDT-FUTURES"] = "USDT-FUTURES"
 
 FACTOR_VOCABULARY: frozenset[str] = frozenset(

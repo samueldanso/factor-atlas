@@ -13,8 +13,8 @@ from factor_atlas.contracts import (
 )
 from factor_atlas.decision import DecisionProvider, FixtureDecisionProvider
 from factor_atlas.fixtures.events import (
-    AAPLUSDT_OHLCV,
     ACCEPTED_SNAPSHOT,
+    RAAPLUSDT_OHLCV,
     REJECTED_SNAPSHOT,
 )
 from factor_atlas.orchestrator import CycleResult, run_cycle, run_cycles
@@ -44,7 +44,7 @@ def _build_ohlcv_df(snapshots: list[MarketSnapshot]) -> pd.DataFrame:
 
 def _ohlcv_data() -> dict[str, pd.DataFrame]:
     """Build the instrument -> OHLCV DataFrame mapping from fixtures."""
-    return {"AAPLUSDT": _build_ohlcv_df(AAPLUSDT_OHLCV)}
+    return {"RAAPLUSDT": _build_ohlcv_df(RAAPLUSDT_OHLCV)}
 
 
 # ---------------------------------------------------------------------------

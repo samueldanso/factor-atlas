@@ -17,12 +17,12 @@ def _det_uuid(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Pre-built OHLCV series for AAPLUSDT (30 bars, 1h, synthetic)
+# Pre-built OHLCV series for RAAPLUSDT rToken (30 bars, 1h, synthetic)
 # ---------------------------------------------------------------------------
 
 _BASE_TS = datetime(2026, 9, 1, 0, 0, 0, tzinfo=UTC)
 
-AAPLUSDT_OHLCV: list[MarketSnapshot] = []
+RAAPLUSDT_OHLCV: list[MarketSnapshot] = []
 
 # Seed a simple synthetic walk: open drifts from 230 upward
 _opens = [
@@ -66,12 +66,12 @@ for i, o in enumerate(_opens):
     low = o - Decimal("0.80")
     c = o + Decimal("0.60")
     vol = Decimal(50000) + Decimal(str(i * 1000))
-    AAPLUSDT_OHLCV.append(
+    RAAPLUSDT_OHLCV.append(
         MarketSnapshot(
             timestamp=ts,
             snapshot_id=_det_uuid(f"aapl-bar-{i}"),
-            instrument="AAPLUSDT",
-            category="USDT-FUTURES",
+            instrument="RAAPLUSDT",
+            category="SPOT",
             open=o,
             high=h,
             low=low,
@@ -90,8 +90,8 @@ for i, o in enumerate(_opens):
 ACCEPTED_SNAPSHOT = MarketSnapshot(
     timestamp=datetime(2026, 9, 1, 12, 0, 0, tzinfo=UTC),
     snapshot_id=_det_uuid("accepted-snapshot"),
-    instrument="AAPLUSDT",
-    category="USDT-FUTURES",
+    instrument="RAAPLUSDT",
+    category="SPOT",
     open=Decimal("235.00"),
     high=Decimal("238.50"),
     low=Decimal("234.20"),
@@ -104,8 +104,8 @@ ACCEPTED_SNAPSHOT = MarketSnapshot(
 REJECTED_SNAPSHOT = MarketSnapshot(
     timestamp=datetime(2026, 9, 1, 13, 0, 0, tzinfo=UTC),
     snapshot_id=_det_uuid("rejected-snapshot"),
-    instrument="NVDAUSDT",
-    category="USDT-FUTURES",
+    instrument="RNVDAUSDT",
+    category="SPOT",
     open=Decimal("140.00"),
     high=Decimal("140.30"),
     low=Decimal("139.80"),
@@ -115,7 +115,7 @@ REJECTED_SNAPSHOT = MarketSnapshot(
 )
 
 __all__ = [
-    "AAPLUSDT_OHLCV",
     "ACCEPTED_SNAPSHOT",
+    "RAAPLUSDT_OHLCV",
     "REJECTED_SNAPSHOT",
 ]

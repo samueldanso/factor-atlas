@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from factor_atlas.fixtures.events import (
-    AAPLUSDT_OHLCV,
     ACCEPTED_SNAPSHOT,
+    RAAPLUSDT_OHLCV,
     REJECTED_SNAPSHOT,
 )
 from factor_atlas.fixtures.hypotheses import (
@@ -13,8 +13,8 @@ from factor_atlas.fixtures.hypotheses import (
 )
 
 __all__ = [
-    "AAPLUSDT_OHLCV",
     "ACCEPTED_SNAPSHOT",
+    "RAAPLUSDT_OHLCV",
     "REJECTED_HYPOTHESIS",
     "REJECTED_SNAPSHOT",
     "VALID_HYPOTHESIS",

@@ -21,8 +21,8 @@ from factor_atlas.contracts import (
     ValidationResult,
 )
 from factor_atlas.fixtures import (
-    AAPLUSDT_OHLCV,
     ACCEPTED_SNAPSHOT,
+    RAAPLUSDT_OHLCV,
     REJECTED_HYPOTHESIS,
     REJECTED_SNAPSHOT,
     VALID_HYPOTHESIS,
@@ -41,7 +41,7 @@ class TestMarketSnapshot:
         snap = MarketSnapshot(
             timestamp=_NOW,
             snapshot_id="snap-1",
-            instrument="AAPLUSDT",
+            instrument="RAAPLUSDT",
             open=Decimal("230.00"),
             high=Decimal("231.50"),
             low=Decimal("229.20"),
@@ -49,8 +49,8 @@ class TestMarketSnapshot:
             volume=Decimal(50000),
             source="fixture",
         )
-        assert snap.instrument == "AAPLUSDT"
-        assert snap.category == "USDT-FUTURES"
+        assert snap.instrument == "RAAPLUSDT"
+        assert snap.category == "SPOT"
         assert snap.close == Decimal("230.60")
 
     def test_invalid_instrument(self) -> None:
@@ -498,19 +498,19 @@ class TestAuditEvent:
 
 class TestFixtures:
     def test_ohlcv_length(self) -> None:
-        assert len(AAPLUSDT_OHLCV) == 30
+        assert len(RAAPLUSDT_OHLCV) == 30
 
     def test_ohlcv_instruments(self) -> None:
-        for snap in AAPLUSDT_OHLCV:
-            assert snap.instrument == "AAPLUSDT"
+        for snap in RAAPLUSDT_OHLCV:
+            assert snap.instrument == "RAAPLUSDT"
             assert snap.instrument in INSTRUMENTS
 
     def test_accepted_snapshot(self) -> None:
-        assert ACCEPTED_SNAPSHOT.instrument == "AAPLUSDT"
+        assert ACCEPTED_SNAPSHOT.instrument == "RAAPLUSDT"
         assert ACCEPTED_SNAPSHOT.volume > Decimal(100000)
 
     def test_rejected_snapshot(self) -> None:
-        assert REJECTED_SNAPSHOT.instrument == "NVDAUSDT"
+        assert REJECTED_SNAPSHOT.instrument == "RNVDAUSDT"
         assert REJECTED_SNAPSHOT.volume < Decimal(10000)
 
     def test_valid_hypothesis(self) -> None:

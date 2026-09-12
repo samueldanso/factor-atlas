@@ -12,8 +12,8 @@ from factor_atlas.broker import BrokerState
 from factor_atlas.contracts import AuditEvent, MarketSnapshot
 from factor_atlas.decision import FixtureDecisionProvider
 from factor_atlas.fixtures.events import (
-    AAPLUSDT_OHLCV,
     ACCEPTED_SNAPSHOT,
+    RAAPLUSDT_OHLCV,
     REJECTED_SNAPSHOT,
 )
 from factor_atlas.orchestrator import CycleResult, run_cycle
@@ -45,7 +45,7 @@ def _build_ohlcv_df(snapshots: list[MarketSnapshot]) -> pd.DataFrame:
 
 
 def _ohlcv_data() -> dict[str, pd.DataFrame]:
-    return {"AAPLUSDT": _build_ohlcv_df(AAPLUSDT_OHLCV)}
+    return {"RAAPLUSDT": _build_ohlcv_df(RAAPLUSDT_OHLCV)}
 
 
 def _accepted_cycle() -> CycleResult:

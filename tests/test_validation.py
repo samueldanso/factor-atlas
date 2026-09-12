@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from factor_atlas.contracts import MarketSnapshot
-from factor_atlas.fixtures import AAPLUSDT_OHLCV
+from factor_atlas.fixtures import RAAPLUSDT_OHLCV
 from factor_atlas.validation import (
     ANNUALIZATION_FACTOR,
     compute_max_drawdown,
@@ -42,7 +42,7 @@ def _ohlcv_to_df(snapshots: list[MarketSnapshot]) -> pd.DataFrame:
 
 @pytest.fixture()
 def ohlcv_df() -> pd.DataFrame:
-    return _ohlcv_to_df(AAPLUSDT_OHLCV)
+    return _ohlcv_to_df(RAAPLUSDT_OHLCV)
 
 
 def _float_series(values: list[float]) -> pd.Series[float]:

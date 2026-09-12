@@ -17,14 +17,29 @@ from factor_atlas.config import (
     MAX_QUANTITY,
     MIN_LOOKBACK,
     MIN_OBSERVATIONS,
+    RESEARCH_CATEGORY,
 )
 
 # ---------------------------------------------------------------------------
 # Shared types
 # ---------------------------------------------------------------------------
 
-InstrumentType = Literal["AAPLUSDT", "NVDAUSDT", "TSLAUSDT", "METAUSDT"]
-CategoryType = Literal["USDT-FUTURES"]
+# rToken SPOT instruments (research / market data)
+ResearchInstrumentType = Literal["RAAPLUSDT", "RNVDAUSDT", "RTSLAUSDT", "RMETAUSDT"]
+# Stock perp instruments (Bitget Demo execution only)
+ExecutionInstrumentType = Literal["AAPLUSDT", "NVDAUSDT", "TSLAUSDT", "METAUSDT"]
+# Union — accepted anywhere an instrument is validated
+InstrumentType = Literal[
+    "RAAPLUSDT",
+    "RNVDAUSDT",
+    "RTSLAUSDT",
+    "RMETAUSDT",
+    "AAPLUSDT",
+    "NVDAUSDT",
+    "TSLAUSDT",
+    "METAUSDT",
+]
+CategoryType = Literal["SPOT", "USDT-FUTURES"]
 SideType = Literal["buy", "sell"]
 DirectionType = Literal["long", "short"]
 SourceType = Literal["fixture", "bitget-demo", "bitget-signal"]
@@ -81,7 +96,7 @@ class MarketSnapshot(BaseModel):
     timestamp: datetime
     snapshot_id: str
     instrument: InstrumentType
-    category: CategoryType = CATEGORY
+    category: CategoryType = RESEARCH_CATEGORY  # rToken SPOT for market data
     open: Decimal
     high: Decimal
     low: Decimal

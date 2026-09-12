@@ -17,7 +17,7 @@ from factor_atlas.factors import (
     compute_volume_spike,
     get_factor,
 )
-from factor_atlas.fixtures import AAPLUSDT_OHLCV
+from factor_atlas.fixtures import RAAPLUSDT_OHLCV
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,7 +43,7 @@ def _ohlcv_to_df(snapshots: list[MarketSnapshot]) -> pd.DataFrame:
 
 @pytest.fixture()
 def ohlcv_df() -> pd.DataFrame:
-    return _ohlcv_to_df(AAPLUSDT_OHLCV)
+    return _ohlcv_to_df(RAAPLUSDT_OHLCV)
 
 
 # ---------------------------------------------------------------------------
