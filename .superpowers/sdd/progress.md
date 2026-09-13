@@ -11,3 +11,5 @@ Task T3: complete (commits 79e098b..95c6f46, verified 108 tests + lint + mypy cl
 Task T4: complete (commits 95c6f46..e0dea1f, verified 160 tests + lint + mypy clean)
 Task T5: complete (commits e0dea1f..32f436f, verified 190 tests + lint + mypy clean)
 Task T6: complete (commits 32f436f..0a11ddb, verified 213 tests + lint + mypy clean)
+Task T7: complete (commits cfc20d0..ab7898e, verified 250 tests + lint + mypy clean)
+Task T8: complete (commits ab7898e..922df3b, verified 250 tests + lint + mypy clean)
