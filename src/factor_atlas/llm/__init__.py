@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from factor_atlas.llm.bedrock_provider import BedrockProvider
 from factor_atlas.llm.decision import LLMDecisionProvider, validate_llm_decision
 from factor_atlas.llm.prompts import (
     DECIDE_SYSTEM,
@@ -15,6 +16,7 @@ from factor_atlas.llm.provider import FixtureLLMProvider, LLMProvider
 __all__ = [
     "DECIDE_SYSTEM",
     "PROPOSE_SYSTEM",
+    "BedrockProvider",
     "FixtureLLMProvider",
     "LLMDecisionProvider",
     "LLMProposer",

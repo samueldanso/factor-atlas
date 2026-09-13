@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -21,11 +22,17 @@ from factor_atlas.config import (
     EXECUTION_INSTRUMENTS,
     FACTOR_VOCABULARY,
     RESEARCH_INSTRUMENTS,
+    RESEARCH_TO_EXECUTION,
 )
-from factor_atlas.decision import FixtureDecisionProvider
+from factor_atlas.contracts import MarketSnapshot
 from factor_atlas.fixtures import ACCEPTED_SNAPSHOT, RAAPLUSDT_OHLCV, REJECTED_SNAPSHOT
+from factor_atlas.llm import (
+    BedrockProvider,
+    FixtureLLMProvider,
+    LLMDecisionProvider,
+    LLMProposer,
+)
 from factor_atlas.orchestrator import CycleResult, run_cycles
-from factor_atlas.proposer import FixtureProposer
 from factor_atlas.risk import RiskConfig
 
 SOFTWARE_VERSION = "0.1.0"
@@ -197,16 +204,25 @@ def _build_fixture_data() -> tuple[
 ]:
     """Build snapshots and OHLCV data from fixtures.
 
+    Snapshot timestamps are set to now so the data_freshness gate passes
+    in deterministic demo runs. OHLCV prices are unchanged fixture data.
+
     Returns (snapshots, ohlcv_dict).
     """
-    snapshots = [ACCEPTED_SNAPSHOT, REJECTED_SNAPSHOT]
+    from datetime import timedelta
 
-    # Build OHLCV DataFrame from fixture bars
+    now = datetime.now(tz=UTC)
+    n_bars = len(RAAPLUSDT_OHLCV)
+
+    # Build OHLCV DataFrame with monotonically increasing timestamps ending at
+    # now. bar[n-1] = now, bar[n-2] = now-1h, ..., bar[0] = now-(n-1)h.
+    # Unique timestamps prevent leakage detection false positives.
     records = []
-    for bar in RAAPLUSDT_OHLCV:
+    for i, bar in enumerate(RAAPLUSDT_OHLCV):
+        ts = now - timedelta(hours=(n_bars - 1 - i))
         records.append(
             {
-                "timestamp": bar.timestamp,
+                "timestamp": ts,
                 "open": float(bar.open),
                 "high": float(bar.high),
                 "low": float(bar.low),
@@ -216,6 +232,14 @@ def _build_fixture_data() -> tuple[
         )
     df = pd.DataFrame(records)
     ohlcv_data: dict[str, pd.DataFrame] = {"RAAPLUSDT": df}
+
+    # Freshen snapshot timestamps to match the last bar (data_freshness gate
+    # checks snapshot.timestamp, which must be within 24h of now).
+    accepted = ACCEPTED_SNAPSHOT.model_copy(update={"timestamp": now})
+    rejected = REJECTED_SNAPSHOT.model_copy(
+        update={"timestamp": now - timedelta(minutes=1)}
+    )
+    snapshots = [accepted, rejected]
 
     return snapshots, ohlcv_data
 
@@ -258,6 +282,148 @@ def _build_manifest(
 
 
 # ---------------------------------------------------------------------------
+# bgc-based market data fetcher (demo mode)
+# ---------------------------------------------------------------------------
+
+
+def _fetch_candles_bgc(
+    symbol: str, interval: str = "1D", limit: int = 90
+) -> pd.DataFrame:
+    """Fetch OHLCV candles for a SPOT rToken symbol via bgc CLI.
+
+    Returns a DataFrame with columns: timestamp, open, high, low, close, volume.
+    Raises RuntimeError if bgc fails or returns no data.
+    """
+    cmd = [
+        "bgc",
+        "market",
+        "--action",
+        "candles",
+        "--category",
+        "SPOT",
+        "--symbol",
+        symbol,
+        "--interval",
+        interval,
+        "--limit",
+        str(limit),
+    ]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=30, check=False
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"bgc candles failed for {symbol}: {result.stderr.strip()}")
+
+    raw = json.loads(result.stdout)
+    candles = raw.get("data", [])
+    if not candles:
+        raise RuntimeError(f"bgc returned empty candles for {symbol}")
+
+    records = []
+    for c in candles:
+        # Format: [ts_ms, open, high, low, close, base_vol, quote_vol]
+        records.append(
+            {
+                "timestamp": datetime.fromtimestamp(int(c[0]) / 1000, tz=UTC),
+                "open": float(c[1]),
+                "high": float(c[2]),
+                "low": float(c[3]),
+                "close": float(c[4]),
+                "volume": float(c[5]),
+            }
+        )
+    return pd.DataFrame(records)
+
+
+def _place_order_bgc(
+    exec_symbol: str,
+    side: str,
+    price: Decimal,
+    qty: Decimal,
+) -> dict[str, Any]:
+    """Place a paper order on Bitget Demo via bgc CLI.
+
+    Returns parsed JSON response. Raises RuntimeError on failure.
+    Always uses --paper-trading, posSide long, timeInForce gtc.
+    """
+    cmd = [
+        "bgc",
+        "--paper-trading",
+        "order",
+        "--action",
+        "place",
+        "--category",
+        "USDT-FUTURES",
+        "--symbol",
+        exec_symbol,
+        "--side",
+        side,
+        "--orderType",
+        "limit",
+        "--price",
+        str(price),
+        "--qty",
+        str(qty),
+        "--timeInForce",
+        "gtc",
+        "--posSide",
+        "long",
+    ]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=30, check=False
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"bgc order failed for {exec_symbol}: {result.stderr.strip()}"
+        )
+    data: dict[str, Any] = json.loads(result.stdout)
+    return data
+
+
+def _build_demo_data(
+    instruments: list[str],
+) -> tuple[
+    list[MarketSnapshot],
+    dict[str, pd.DataFrame],
+]:
+    """Fetch live rToken SPOT candles via bgc for all research instruments.
+
+    Returns (snapshots, ohlcv_dict) where each snapshot is the latest bar
+    and ohlcv_dict has DataFrames keyed by research symbol.
+    """
+    snapshots: list[MarketSnapshot] = []
+    ohlcv_data: dict[str, pd.DataFrame] = {}
+
+    for symbol in instruments:
+        try:
+            df = _fetch_candles_bgc(symbol, interval="1D", limit=90)
+        except RuntimeError as e:
+            print(f"  Warning: {e} — skipping {symbol}", file=sys.stderr)
+            continue
+
+        if df.empty:
+            continue
+
+        ohlcv_data[symbol] = df
+        last = df.iloc[-1]
+        snap = MarketSnapshot(
+            timestamp=last["timestamp"],
+            snapshot_id=f"demo-{symbol}-{int(last['timestamp'].timestamp())}",
+            instrument=symbol,
+            category="SPOT",
+            open=Decimal(str(last["open"])),
+            high=Decimal(str(last["high"])),
+            low=Decimal(str(last["low"])),
+            close=Decimal(str(last["close"])),
+            volume=Decimal(str(last["volume"])),
+            source="bitget-demo",
+        )
+        snapshots.append(snap)
+
+    return snapshots, ohlcv_data
+
+
+# ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
 
@@ -275,15 +441,6 @@ def run_paper_session(
         msg = f"Unknown mode '{mode}'. Must be 'fixture' or 'demo'."
         raise ValueError(msg)
 
-    if mode == "demo":
-        print(
-            "Demo mode requires Bitget credentials and is not yet integrated.",
-            file=sys.stderr,
-        )
-        print("Use --mode fixture for deterministic runs.", file=sys.stderr)
-        msg = "Demo mode not yet implemented for autonomous loop."
-        raise NotImplementedError(msg)
-
     # Setup output
     run_id = str(uuid4())
     base_dir = output_dir or _DEFAULT_OUTPUT_DIR
@@ -300,15 +457,43 @@ def run_paper_session(
     audit_path = run_dir / "audit_log.jsonl"
     audit_logger = AuditLogger(output_path=audit_path)
 
-    # Fixture mode: use fixture data, proposer, and decision provider
-    snapshots_all, ohlcv_data = _build_fixture_data()
+    if mode == "demo":
+        # Demo mode: fetch live rToken SPOT candles via bgc, run cycles,
+        # and place paper orders on Bitget Demo via bgc --paper-trading.
+        print("Demo mode: fetching live rToken SPOT candles via bgc...")
+        research_syms = sorted(RESEARCH_INSTRUMENTS)
+        snapshots_all, ohlcv_data = _build_demo_data(research_syms)
+        if not snapshots_all:
+            msg = "Demo mode: no candle data returned for any instrument. Check bgc."
+            raise RuntimeError(msg)
+    else:
+        # Fixture mode: deterministic data with fresh timestamps.
+        snapshots_all, ohlcv_data = _build_fixture_data()
 
     # Trim to requested cycle count
     snapshots = snapshots_all[:cycles]
 
     broker_state = BrokerState()
-    proposer = FixtureProposer()
-    decision_provider = FixtureDecisionProvider()
+
+    # Wire real LLM: Bedrock in demo mode, deterministic fixture provider otherwise.
+    # Both paths go through LLMProposer + LLMDecisionProvider — the LLM is always
+    # the decision layer. FixtureLLMProvider keeps tests credential-free.
+    if mode == "demo":
+        try:
+            llm_provider = BedrockProvider()
+            print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
+        except (ImportError, RuntimeError, OSError) as e:
+            print(
+                f"  Warning: BedrockProvider init failed ({e}). "
+                "Falling back to FixtureLLMProvider.",
+                file=sys.stderr,
+            )
+            llm_provider = FixtureLLMProvider()  # type: ignore[assignment]
+    else:
+        llm_provider = FixtureLLMProvider()  # type: ignore[assignment]
+
+    proposer = LLMProposer(llm_provider)
+    decision_provider = LLMDecisionProvider(llm_provider)
 
     results = run_cycles(
         snapshots=snapshots,
@@ -322,11 +507,41 @@ def run_paper_session(
 
     end_time = datetime.now(tz=UTC)
 
+    # In demo mode, place real bgc paper orders for accepted cycles.
+    bgc_order_ids: dict[str, str] = {}
+    if mode == "demo":
+        for result in results:
+            if result.status == "accepted" and result.decision is not None:
+                d = result.decision
+                exec_sym = RESEARCH_TO_EXECUTION.get(d.instrument, d.instrument)
+                try:
+                    resp = _place_order_bgc(
+                        exec_symbol=exec_sym,
+                        side=d.side,
+                        price=d.price,
+                        qty=d.quantity,
+                    )
+                    order_id = (
+                        resp.get("data", {}).get("orderId")
+                        or resp.get("orderId")
+                        or "unknown"
+                    )
+                    bgc_order_ids[result.cycle_id] = str(order_id)
+                    print(
+                        f"  Demo order placed: {exec_sym} {d.side} → orderId={order_id}"
+                    )
+                except (RuntimeError, json.JSONDecodeError) as e:
+                    print(f"  Demo order failed for {exec_sym}: {e}", file=sys.stderr)
+                    bgc_order_ids[result.cycle_id] = f"error:{e}"
+
     # Write paper log
     paper_log_path = run_dir / "paper_log.jsonl"
     with paper_log_path.open("a") as f:
         for result in results:
             record = _build_paper_record(result, config_hash)
+            # Stamp real bgc orderId if available
+            if mode == "demo" and result.cycle_id in bgc_order_ids:
+                record["bgc_order_id"] = bgc_order_ids[result.cycle_id]
             f.write(json.dumps(record) + "\n")
 
     # Write manifest

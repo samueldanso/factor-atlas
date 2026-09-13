@@ -5,6 +5,7 @@ description = "Agentic factor discovery for 24/7 tokenized stock markets"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "boto3>=1.43.93",
     "httpx>=0.28.1",
     "numpy>=2.4.6",
     "pandas>=3.0.5",
@@ -33,6 +34,10 @@ pythonpath = ["src"]
 python_version = "3.11"
 strict = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 src = ["src", "tests"]

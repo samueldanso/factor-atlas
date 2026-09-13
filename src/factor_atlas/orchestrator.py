@@ -95,8 +95,9 @@ def run_cycle(
 
     if df is not None and not df.empty:
         for hyp in hypotheses:
-            # Build param dict matching the factor schema
+            # Build param dict: merge parameters + lookback (all factors require it).
             params: dict[str, Any] = dict(hyp.parameters)
+            params.setdefault("lookback", hyp.lookback)
             result = validate_factor(
                 factor_name=hyp.factor_name,
                 df=df,

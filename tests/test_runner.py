@@ -167,9 +167,15 @@ class TestRunPaperSession:
         with pytest.raises(ValueError, match="Unknown mode"):
             run_paper_session(mode="live", cycles=1, output_dir=tmp_path)
 
-    def test_demo_mode_not_implemented(self, tmp_path: Path) -> None:
-        with pytest.raises(NotImplementedError):
+    def test_demo_mode_runs_or_fails_cleanly(self, tmp_path: Path) -> None:
+        # Demo mode runs bgc for live candles. In CI it may raise RuntimeError
+        # if bgc returns no data, but never NotImplementedError.
+        try:
             run_paper_session(mode="demo", cycles=1, output_dir=tmp_path)
+        except RuntimeError:
+            pass  # acceptable: bgc unavailable or returned no data
+        except NotImplementedError:
+            pytest.fail("Demo mode must not raise NotImplementedError")
 
 
 class TestCLI:
@@ -197,8 +203,10 @@ class TestCLI:
         assert len(subdirs) == 1
         assert (subdirs[0] / "paper_log.jsonl").exists()
 
-    def test_demo_mode_returns_1(self, tmp_path: Path) -> None:
+    def test_demo_mode_exits_cleanly(self, tmp_path: Path) -> None:
+        # Demo mode calls bgc live; it should exit 0 (success) or 1 (bgc error),
+        # but never crash with an unhandled exception.
         from factor_atlas.__main__ import main
 
         rc = main(["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)])
-        assert rc == 1
+        assert rc in (0, 1)

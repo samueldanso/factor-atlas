@@ -71,7 +71,7 @@ class BitgetDemoAdapter:
 
         Returns the raw API response dict or an error dict.
         """
-        path = f"/api/v2/mix/market/ticker?productType={CATEGORY}&symbol={instrument}"
+        path = f"/api/v3/mix/market/ticker?productType={CATEGORY}&symbol={instrument}"
         headers = self._headers("GET", path)
         try:
             resp = await self._client.get(path, headers=headers)
@@ -94,8 +94,13 @@ class BitgetDemoAdapter:
         quantity: Decimal,
         price: Decimal,
     ) -> dict[str, Any]:
-        """Place a paper order on Bitget Demo. Returns order response dict."""
-        path = "/api/v2/mix/order/place-order"
+        """Place a paper order on Bitget Demo. Returns order response dict.
+
+        Uses v3 endpoint with posSide (account is in hedge mode).
+        side=buy → posSide=long; side=sell → posSide=short.
+        """
+        path = "/api/v3/trade/place-order"
+        pos_side = "long" if side == "buy" else "short"
         body_dict = {
             "symbol": instrument,
             "productType": CATEGORY,
@@ -105,7 +110,8 @@ class BitgetDemoAdapter:
             "orderType": "limit",
             "price": str(price),
             "size": str(quantity),
-            "tradeSide": "open",
+            "posSide": pos_side,
+            "timeInForce": "gtc",
         }
         import json
 
@@ -130,7 +136,7 @@ class BitgetDemoAdapter:
 
         Returns the raw API response dict or an error dict.
         """
-        path = f"/api/v2/mix/account/accounts?productType={CATEGORY}"
+        path = f"/api/v3/account/accounts?productType={CATEGORY}"
         headers = self._headers("GET", path)
         try:
             resp = await self._client.get(path, headers=headers)
