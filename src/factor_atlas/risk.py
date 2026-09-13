@@ -47,6 +47,10 @@ class RiskConfig:
     daily_loss_limit: Decimal = Decimal(DAILY_LOSS_LIMIT)
     max_concentration_per_instrument: int = MAX_CONCENTRATION_PER_INSTRUMENT
     max_quantity: Decimal = Decimal(MAX_QUANTITY)
+    # Exit management
+    max_hold_hours: int = 24
+    stop_loss_pct: float = 0.03
+    take_profit_pct: float = 0.05
 
 
 # ---------------------------------------------------------------------------

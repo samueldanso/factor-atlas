@@ -16,7 +16,7 @@ import pandas as pd
 
 from factor_atlas.adapters.normalize import research_to_execution
 from factor_atlas.audit import AuditLogger
-from factor_atlas.broker import BrokerState
+from factor_atlas.broker import BrokerState, ClosedTrade, OpenPosition
 from factor_atlas.config import (
     CATEGORY,
     EXECUTION_INSTRUMENTS,
@@ -32,6 +32,7 @@ from factor_atlas.llm import (
     LLMDecisionProvider,
     LLMProposer,
 )
+from factor_atlas.metrics import compute_metrics, make_closed_trade
 from factor_atlas.orchestrator import CycleResult, run_cycles
 from factor_atlas.risk import RiskConfig
 
@@ -136,6 +137,7 @@ def _build_paper_record(
 
     if order is not None:
         return {
+            "record_type": "open",
             "order_id": order.order_id,
             "decision_id": order.decision_id,
             "event_id": order.event_id,
@@ -165,6 +167,7 @@ def _build_paper_record(
 
     # No order (no_candidate / no_hypothesis)
     return {
+        "record_type": "open",
         "order_id": None,
         "decision_id": decision.decision_id if decision else None,
         "event_id": None,
@@ -257,6 +260,7 @@ def _build_manifest(
     results: list[CycleResult],
     config_hash: str,
     commit: str,
+    closed_trades: list[ClosedTrade] | None = None,
 ) -> dict[str, Any]:
     """Build the run manifest dict."""
     accepted = sum(1 for r in results if r.status == "accepted")
@@ -264,7 +268,7 @@ def _build_manifest(
     research_insts = sorted({r.snapshot.instrument for r in results})
     exec_insts = sorted({research_to_execution(i) for i in research_insts})
 
-    return {
+    manifest: dict[str, Any] = {
         "run_id": run_id,
         "start_timestamp": start_time.isoformat(),
         "end_timestamp": end_time.isoformat(),
@@ -278,7 +282,9 @@ def _build_manifest(
         "code_commit": commit,
         "config_hash": config_hash,
         "software_version": SOFTWARE_VERSION,
+        "performance_metrics": compute_metrics(closed_trades or []),
     }
+    return manifest
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +431,230 @@ def _build_demo_data(
 
 
 # ---------------------------------------------------------------------------
+# Position state persistence (cross-run tracking for demo mode)
+# ---------------------------------------------------------------------------
+
+_POSITIONS_STATE_FILE = _DEFAULT_OUTPUT_DIR / "positions_state.json"
+
+
+def _load_positions_state(
+    broker_state: BrokerState,
+    state_path: Path,
+) -> None:
+    """Load persisted open positions and closed trades into broker_state."""
+    if not state_path.exists():
+        return
+    try:
+        raw = json.loads(state_path.read_text())
+        for d in raw.get("open_positions", []):
+            pos = OpenPosition.from_dict(d)
+            broker_state.open_positions[pos.instrument] = pos
+        for d in raw.get("closed_trades", []):
+            broker_state.closed_trades.append(ClosedTrade.from_dict(d))
+    except (json.JSONDecodeError, KeyError, ValueError):
+        pass  # corrupt state → start fresh
+
+
+def _save_positions_state(
+    broker_state: BrokerState,
+    state_path: Path,
+) -> None:
+    """Persist open positions and closed trades for the next run."""
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "open_positions": [p.to_dict() for p in broker_state.open_positions.values()],
+                "closed_trades": [t.to_dict() for t in broker_state.closed_trades],
+                "last_updated": datetime.now(tz=UTC).isoformat(),
+            },
+            indent=2,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Position registration (after a cycle fills an entry order)
+# ---------------------------------------------------------------------------
+
+
+def _register_open_positions(
+    results: list[CycleResult],
+    broker_state: BrokerState,
+) -> None:
+    """Add accepted, filled cycles to broker_state.open_positions."""
+    for result in results:
+        if result.status != "accepted" or result.order is None:
+            continue
+        if result.order.status != "filled" or result.decision is None:
+            continue
+        d = result.decision
+        factor_name = ""
+        for hyp, _ in result.validated:
+            if hyp.hypothesis_id == d.hypothesis_id:
+                factor_name = hyp.factor_name
+                break
+        pos = OpenPosition(
+            instrument=d.instrument,
+            side=d.side,
+            entry_price=d.price,
+            quantity=d.quantity,
+            entry_time=d.timestamp,
+            hypothesis_id=d.hypothesis_id,
+            factor_name=factor_name,
+            cycle_id=result.cycle_id,
+        )
+        broker_state.open_positions[d.instrument] = pos
+
+
+# ---------------------------------------------------------------------------
+# Exit evaluation
+# ---------------------------------------------------------------------------
+
+
+def _should_exit(
+    pos: OpenPosition,
+    current_price: Decimal,
+    now: datetime,
+    risk_config: RiskConfig,
+) -> tuple[bool, str]:
+    """Return (should_exit, reason) for an open position."""
+    cost = pos.entry_price
+    if cost == 0:
+        return False, ""
+    if pos.side == "buy":
+        unrealized_pct = float((current_price - pos.entry_price) / cost)
+    else:
+        unrealized_pct = float((pos.entry_price - current_price) / cost)
+
+    if unrealized_pct <= -risk_config.stop_loss_pct:
+        return True, f"stop_loss ({unrealized_pct:.2%})"
+    if unrealized_pct >= risk_config.take_profit_pct:
+        return True, f"take_profit ({unrealized_pct:.2%})"
+    hold_h = (now - pos.entry_time).total_seconds() / 3600
+    if hold_h >= risk_config.max_hold_hours:
+        return True, f"max_hold ({hold_h:.1f}h)"
+    return False, ""
+
+
+def _build_close_record(
+    closed_trade: ClosedTrade,
+    config_hash: str,
+    bgc_close_order_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a paper_log close record for a ClosedTrade."""
+    exec_instrument = research_to_execution(closed_trade.instrument)
+    close_side = "sell" if closed_trade.side == "buy" else "buy"
+    record: dict[str, Any] = {
+        "record_type": "close",
+        "order_id": None,
+        "decision_id": None,
+        "event_id": None,
+        "timestamp": closed_trade.exit_time.isoformat(),
+        "instrument": exec_instrument,
+        "category": CATEGORY,
+        "side": close_side,
+        "price": str(closed_trade.exit_price),
+        "quantity": str(closed_trade.quantity),
+        "notional": str(closed_trade.exit_price * closed_trade.quantity),
+        "pre_balance": None,
+        "post_balance": None,
+        "fees": "0",
+        "slippage": "0",
+        "status": "closed",
+        "fill_price": str(closed_trade.exit_price),
+        "rejection_reason": None,
+        "cycle_id": "",
+        "hypothesis_id": "",
+        "factor_name": closed_trade.factor_name,
+        "risk_gate_results": [],
+        "validation_sharpe": None,
+        "rationale": f"exit: pnl={closed_trade.pnl} ({closed_trade.pnl_pct:.2%}), "
+        f"hold={closed_trade.hold_duration_hours:.1f}h",
+        "entry_price": str(closed_trade.entry_price),
+        "exit_price": str(closed_trade.exit_price),
+        "pnl": str(closed_trade.pnl),
+        "pnl_pct": closed_trade.pnl_pct,
+        "won": closed_trade.won,
+        "hold_duration_hours": closed_trade.hold_duration_hours,
+        "software_version": SOFTWARE_VERSION,
+        "config_hash": config_hash,
+    }
+    if bgc_close_order_id:
+        record["bgc_order_id"] = bgc_close_order_id
+    return record
+
+
+# ---------------------------------------------------------------------------
+# Demo mode exit processor
+# ---------------------------------------------------------------------------
+
+
+def _process_demo_exits(
+    broker_state: BrokerState,
+    ohlcv_data: dict[str, pd.DataFrame],
+    risk_config: RiskConfig,
+    config_hash: str,
+    paper_log_f: Any,
+) -> None:
+    """Check open positions for exit conditions and close them via bgc."""
+    now = datetime.now(tz=UTC)
+    to_close: list[str] = []
+
+    for instrument, pos in broker_state.open_positions.items():
+        df = ohlcv_data.get(instrument)
+        if df is None or df.empty:
+            continue
+        current_price = Decimal(str(df.iloc[-1]["close"]))
+        should_exit, reason = _should_exit(pos, current_price, now, risk_config)
+        if should_exit:
+            to_close.append(instrument)
+            closed = make_closed_trade(pos, current_price, now)
+            broker_state.closed_trades.append(closed)
+            broker_state.daily_pnl += closed.pnl
+
+            exec_sym = RESEARCH_TO_EXECUTION.get(instrument, instrument)
+            close_side = "sell" if pos.side == "buy" else "buy"
+            bgc_close_id: str | None = None
+            try:
+                resp = _place_order_bgc(exec_sym, close_side, current_price, pos.quantity)
+                bgc_close_id = (
+                    str(resp.get("data", {}).get("orderId") or resp.get("orderId") or "")
+                    or None
+                )
+                print(f"  Exit {instrument} ({reason}): orderId={bgc_close_id}")
+            except (RuntimeError, json.JSONDecodeError) as e:
+                print(f"  Exit order failed for {instrument}: {e}", file=sys.stderr)
+
+            close_record = _build_close_record(closed, config_hash, bgc_close_id)
+            paper_log_f.write(json.dumps(close_record) + "\n")
+
+    for instrument in to_close:
+        del broker_state.open_positions[instrument]
+
+
+# ---------------------------------------------------------------------------
+# Fixture mode synthetic exit (in-memory only, no bgc, for metrics in tests)
+# ---------------------------------------------------------------------------
+
+
+def _process_fixture_exits(
+    broker_state: BrokerState,
+) -> None:
+    """Synthetically close all open positions at ±2% from entry (no I/O)."""
+    now = datetime.now(tz=UTC)
+    for pos in list(broker_state.open_positions.values()):
+        if pos.side == "buy":
+            exit_price = pos.entry_price * Decimal("1.02")
+        else:
+            exit_price = pos.entry_price * Decimal("0.98")
+        closed = make_closed_trade(pos, exit_price, now)
+        broker_state.closed_trades.append(closed)
+        broker_state.daily_pnl += closed.pnl
+    broker_state.open_positions.clear()
+
+
+# ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
 
@@ -458,9 +688,9 @@ def run_paper_session(
     audit_path = run_dir / "audit_log.jsonl"
     audit_logger = AuditLogger(output_path=audit_path)
 
+    state_path = (output_dir or _DEFAULT_OUTPUT_DIR) / "positions_state.json"
+
     if mode == "demo":
-        # Demo mode: fetch live rToken SPOT candles via bgc, run cycles,
-        # and place paper orders on Bitget Demo via bgc --paper-trading.
         print("Demo mode: fetching live rToken SPOT candles via bgc...")
         research_syms = sorted(RESEARCH_INSTRUMENTS)
         snapshots_all, ohlcv_data = _build_demo_data(research_syms)
@@ -468,17 +698,15 @@ def run_paper_session(
             msg = "Demo mode: no candle data returned for any instrument. Check bgc."
             raise RuntimeError(msg)
     else:
-        # Fixture mode: deterministic data with fresh timestamps.
         snapshots_all, ohlcv_data = _build_fixture_data()
 
-    # Trim to requested cycle count
     snapshots = snapshots_all[:cycles]
 
     broker_state = BrokerState()
 
-    # Wire real LLM: Bedrock in demo mode, deterministic fixture provider otherwise.
-    # Both paths go through LLMProposer + LLMDecisionProvider — the LLM is always
-    # the decision layer. FixtureLLMProvider keeps tests credential-free.
+    if mode == "demo":
+        _load_positions_state(broker_state, state_path)
+
     if mode == "demo":
         try:
             llm_provider = BedrockProvider()
@@ -496,56 +724,72 @@ def run_paper_session(
     proposer = LLMProposer(llm_provider)
     decision_provider = LLMDecisionProvider(llm_provider)
 
-    results = run_cycles(
-        snapshots=snapshots,
-        ohlcv_data=ohlcv_data,
-        proposer=proposer,
-        decision_provider=decision_provider,
-        broker_state=broker_state,
-        risk_config=risk_config,
-        audit_logger=audit_logger,
-    )
-
-    end_time = datetime.now(tz=UTC)
-
-    # In demo mode, place real bgc paper orders for accepted cycles.
-    bgc_order_ids: dict[str, str] = {}
-    if mode == "demo":
-        for result in results:
-            if result.status == "accepted" and result.decision is not None:
-                d = result.decision
-                exec_sym = RESEARCH_TO_EXECUTION.get(d.instrument, d.instrument)
-                try:
-                    resp = _place_order_bgc(
-                        exec_symbol=exec_sym,
-                        side=d.side,
-                        price=d.price,
-                        qty=d.quantity,
-                    )
-                    order_id = (
-                        resp.get("data", {}).get("orderId")
-                        or resp.get("orderId")
-                        or "unknown"
-                    )
-                    bgc_order_ids[result.cycle_id] = str(order_id)
-                    print(
-                        f"  Demo order placed: {exec_sym} {d.side} → orderId={order_id}"
-                    )
-                except (RuntimeError, json.JSONDecodeError) as e:
-                    print(f"  Demo order failed for {exec_sym}: {e}", file=sys.stderr)
-                    bgc_order_ids[result.cycle_id] = f"error:{e}"
-
-    # Write paper log
+    # Write paper log — open file here so exit processor can append close records
     paper_log_path = run_dir / "paper_log.jsonl"
-    with paper_log_path.open("a") as f:
+
+    with paper_log_path.open("a") as paper_log_f:
+        # Demo: process exits from prior runs before opening new positions
+        if mode == "demo" and broker_state.open_positions:
+            _process_demo_exits(
+                broker_state, ohlcv_data, risk_config, config_hash, paper_log_f
+            )
+
+        results = run_cycles(
+            snapshots=snapshots,
+            ohlcv_data=ohlcv_data,
+            proposer=proposer,
+            decision_provider=decision_provider,
+            broker_state=broker_state,
+            risk_config=risk_config,
+            audit_logger=audit_logger,
+        )
+
+        end_time = datetime.now(tz=UTC)
+
+        # Register newly opened positions
+        _register_open_positions(results, broker_state)
+
+        # Demo: place bgc entry orders for accepted cycles
+        bgc_order_ids: dict[str, str] = {}
+        if mode == "demo":
+            for result in results:
+                if result.status == "accepted" and result.decision is not None:
+                    d = result.decision
+                    exec_sym = RESEARCH_TO_EXECUTION.get(d.instrument, d.instrument)
+                    try:
+                        resp = _place_order_bgc(
+                            exec_symbol=exec_sym,
+                            side=d.side,
+                            price=d.price,
+                            qty=d.quantity,
+                        )
+                        order_id = (
+                            resp.get("data", {}).get("orderId")
+                            or resp.get("orderId")
+                            or "unknown"
+                        )
+                        bgc_order_ids[result.cycle_id] = str(order_id)
+                        print(f"  Entry {exec_sym} {d.side} → orderId={order_id}")
+                    except (RuntimeError, json.JSONDecodeError) as e:
+                        print(f"  Entry order failed for {exec_sym}: {e}", file=sys.stderr)
+                        bgc_order_ids[result.cycle_id] = f"error:{e}"
+
+        # Fixture: close positions synthetically for metrics (in-memory only)
+        if mode == "fixture":
+            _process_fixture_exits(broker_state)
+
+        # Write open-cycle records
         for result in results:
             record = _build_paper_record(result, config_hash)
-            # Stamp real bgc orderId if available
             if mode == "demo" and result.cycle_id in bgc_order_ids:
                 record["bgc_order_id"] = bgc_order_ids[result.cycle_id]
-            f.write(json.dumps(record) + "\n")
+            paper_log_f.write(json.dumps(record) + "\n")
 
-    # Write manifest
+    # Persist position state for next demo run
+    if mode == "demo":
+        _save_positions_state(broker_state, state_path)
+
+    # Write manifest with real performance metrics
     manifest = _build_manifest(
         run_id=run_id,
         mode=mode,
@@ -554,16 +798,23 @@ def run_paper_session(
         results=results,
         config_hash=config_hash,
         commit=commit,
+        closed_trades=broker_state.closed_trades,
     )
     manifest_path = run_dir / "manifest.json"
     with manifest_path.open("w") as f:
         json.dump(manifest, f, indent=2)
         f.write("\n")
 
+    perf = manifest["performance_metrics"]
     print(f"Paper run complete: {run_dir}")
     print(f"  Cycles: {len(results)}")
     print(f"  Accepted: {manifest['accepted_count']}")
     print(f"  Rejected: {manifest['rejected_count']}")
+    print(
+        f"  Performance: trades={perf['total_trades']}, "
+        f"win_rate={perf['win_rate']}, sharpe={perf['sharpe_ratio']}, "
+        f"max_dd={perf['max_drawdown']}"
+    )
     print(f"  Paper log: {paper_log_path}")
     print(f"  Audit log: {audit_path}")
     print(f"  Manifest: {manifest_path}")
