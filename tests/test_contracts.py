@@ -498,7 +498,7 @@ class TestAuditEvent:
 
 class TestFixtures:
     def test_ohlcv_length(self) -> None:
-        assert len(RAAPLUSDT_OHLCV) == 30
+        assert len(RAAPLUSDT_OHLCV) == 80
 
     def test_ohlcv_instruments(self) -> None:
         for snap in RAAPLUSDT_OHLCV:

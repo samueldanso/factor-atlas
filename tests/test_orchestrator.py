@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pandas as pd
 
+from factor_atlas.config import INSTRUMENTS
 from factor_atlas.contracts import (
     FactorHypothesis,
     MarketSnapshot,
@@ -219,7 +220,7 @@ class TestCycleRunner:
         result = run_cycle(ACCEPTED_SNAPSHOT, ohlcv, proposer, dp, search_budget=5)
         if result.decision is not None:
             d = result.decision
-            assert d.instrument in ("AAPLUSDT", "NVDAUSDT", "TSLAUSDT", "METAUSDT")
+            assert d.instrument in INSTRUMENTS
             assert d.side in ("buy", "sell")
             assert d.quantity > Decimal(0)
             assert d.rationale.strip()

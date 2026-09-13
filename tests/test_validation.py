@@ -360,9 +360,9 @@ class TestRejectionCriteria:
     def test_sharpe_threshold_rejection(self, ohlcv_df: pd.DataFrame) -> None:
         """Factor with Sharpe below threshold is rejected."""
         result = validate_factor(
-            "momentum",
+            "mean_reversion",
             ohlcv_df,
-            {"lookback": 5, "threshold": 0.01},
+            {"lookback": 10, "entry_z": 1.0},
             min_observations=5,
             min_sharpe=999.0,  # impossibly high threshold
             max_drawdown=-999.0,
