@@ -35,6 +35,8 @@ a list of objects.  Each object MUST have these keys:
 direction must be "long" or "short".
 instruments must be a list of valid instrument strings.
 parameters must have numeric values within the schema ranges above.
+
+Return ONLY raw JSON — no markdown, no code fences, no explanation.
 """
 
 DECIDE_SYSTEM: str = """\
@@ -49,6 +51,8 @@ Respond with a JSON object:
 selected_index is the 0-based index into the candidates list.
 If none of the candidates are acceptable, respond:
   {"selected_index": null, "rationale": "<reason>"}
+
+Return ONLY raw JSON — no markdown, no code fences, no explanation.
 """
 
 

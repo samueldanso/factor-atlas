@@ -346,6 +346,7 @@ def _place_order_bgc(
     Returns parsed JSON response. Raises RuntimeError on failure.
     Always uses --paper-trading, posSide long, timeInForce gtc.
     """
+    pos_side = "long" if side == "buy" else "short"
     cmd = [
         "bgc",
         "--paper-trading",
@@ -367,7 +368,7 @@ def _place_order_bgc(
         "--timeInForce",
         "gtc",
         "--posSide",
-        "long",
+        pos_side,
     ]
     result = subprocess.run(
         cmd, capture_output=True, text=True, timeout=30, check=False

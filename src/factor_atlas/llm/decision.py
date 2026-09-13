@@ -15,7 +15,7 @@ from factor_atlas.contracts import (
     ValidationResult,
 )
 from factor_atlas.llm.prompts import DECIDE_SYSTEM, decide_user_prompt
-from factor_atlas.llm.provider import LLMProvider
+from factor_atlas.llm.provider import LLMProvider, strip_code_fence
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,7 @@ class LLMDecisionProvider:
             return None
 
         try:
-            parsed = json.loads(raw)
+            parsed = json.loads(strip_code_fence(raw))
         except (json.JSONDecodeError, TypeError):
             logger.warning("LLM returned malformed JSON for decide: %s", raw[:200])
             return None

@@ -11,7 +11,7 @@ from factor_atlas.config import FACTOR_VOCABULARY, INSTRUMENTS
 from factor_atlas.contracts import FactorHypothesis, MarketSnapshot
 from factor_atlas.factors import PARAM_SCHEMAS
 from factor_atlas.llm.prompts import PROPOSE_SYSTEM, propose_user_prompt
-from factor_atlas.llm.provider import LLMProvider
+from factor_atlas.llm.provider import LLMProvider, strip_code_fence
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ class LLMProposer:
             return []
 
         try:
-            parsed = json.loads(raw)
+            parsed = json.loads(strip_code_fence(raw))
         except (json.JSONDecodeError, TypeError):
             logger.warning("LLM returned malformed JSON for propose: %s", raw[:200])
             return []

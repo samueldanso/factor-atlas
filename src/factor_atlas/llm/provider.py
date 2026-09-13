@@ -95,7 +95,21 @@ class FixtureLLMProvider:
         return min(INSTRUMENTS)
 
 
+def strip_code_fence(text: str) -> str:
+    """Strip markdown code fences from LLM output before JSON parsing."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        # Drop opening fence (```json or ```)
+        start = 1
+        # Drop closing fence
+        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
+        text = "\n".join(lines[start:end]).strip()
+    return text
+
+
 __all__ = [
     "FixtureLLMProvider",
     "LLMProvider",
+    "strip_code_fence",
 ]
