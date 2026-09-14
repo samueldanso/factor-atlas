@@ -758,6 +758,24 @@ def run_paper_session(
     if mode == "demo":
         _load_positions_state(broker_state, state_path)
 
+    # Pre-flight: query exchange state and reconcile with local state (demo only)
+    exchange_state = None
+    if mode == "demo":
+        try:
+            from factor_atlas.exchange import query_exchange_state
+            from factor_atlas.reconcile import reconcile_positions
+
+            exchange_state = query_exchange_state()
+            divergences = reconcile_positions(broker_state, exchange_state)
+            for div in divergences:
+                print(
+                    f"  Reconciliation: {div.instrument} — {div.kind} "
+                    f"(local={div.local_value}, exchange={div.exchange_value})",
+                    file=sys.stderr,
+                )
+        except Exception as e:  # noqa: BLE001
+            print(f"  Pre-flight exchange query failed: {e}", file=sys.stderr)
+
     if mode == "demo":
         llm_provider = BedrockProvider()
         print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
@@ -802,6 +820,7 @@ def run_paper_session(
             broker_state=broker_state,
             risk_config=risk_config,
             audit_logger=audit_logger,
+            exchange_state=exchange_state,
         )
 
         end_time = datetime.now(tz=UTC)
@@ -836,6 +855,26 @@ def run_paper_session(
                         )
                         bgc_order_ids[result.cycle_id] = f"error:{e}"
 
+        # Demo: verify each placed order's status via bgc
+        verification_statuses: dict[str, str] = {}
+        if mode == "demo":
+            from factor_atlas.exchange import classify_order_status, query_order_status
+
+            for cycle_id, oid in bgc_order_ids.items():
+                if oid.startswith("error:"):
+                    verification_statuses[cycle_id] = "query_failed"
+                    continue
+                try:
+                    order_detail = query_order_status(oid)
+                    verification_statuses[cycle_id] = classify_order_status(
+                        order_detail.status
+                    )
+                except (RuntimeError, OSError, ValueError) as e:
+                    print(
+                        f"  Order verification failed for {oid}: {e}", file=sys.stderr
+                    )
+                    verification_statuses[cycle_id] = "query_failed"
+
         # Fixture: close positions synthetically for metrics (in-memory only)
         if mode == "fixture":
             _process_fixture_exits(broker_state)
@@ -845,6 +884,12 @@ def run_paper_session(
             record = _build_paper_record(result, config_hash)
             if mode == "demo" and result.cycle_id in bgc_order_ids:
                 record["bgc_order_id"] = bgc_order_ids[result.cycle_id]
+            if mode == "fixture":
+                record["verification_status"] = "not_applicable"
+            else:
+                record["verification_status"] = verification_statuses.get(
+                    result.cycle_id, "not_applicable"
+                )
             paper_log_f.write(json.dumps(record) + "\n")
 
     # Persist position state for next demo run

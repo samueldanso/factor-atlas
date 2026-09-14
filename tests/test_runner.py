@@ -178,6 +178,33 @@ class TestRunPaperSession:
             pytest.fail("Demo mode must not raise NotImplementedError")
 
 
+class TestOrderVerification:
+    """Paper log verification_status field."""
+
+    def test_paper_log_contains_verification_status(self, tmp_path: Path) -> None:
+        """Fixture mode paper log records should have verification_status absent or not_applicable."""
+        run_dir = run_paper_session(mode="fixture", cycles=2, output_dir=tmp_path)
+        paper_log = (run_dir / "paper_log.jsonl").read_text().strip().split("\n")
+        for line in paper_log:
+            record = json.loads(line)
+            # Fixture mode: field should be "not_applicable" (or absent/None for close records)
+            assert record.get("verification_status") in (None, "not_applicable"), (
+                f"Unexpected verification_status: {record.get('verification_status')}"
+            )
+
+    def test_open_records_have_not_applicable_in_fixture(self, tmp_path: Path) -> None:
+        """Open-type records in fixture mode must have verification_status='not_applicable'."""
+        run_dir = run_paper_session(mode="fixture", cycles=2, output_dir=tmp_path)
+        paper_log = (run_dir / "paper_log.jsonl").read_text().strip().split("\n")
+        for line in paper_log:
+            record = json.loads(line)
+            if record.get("record_type") == "open":
+                assert record["verification_status"] == "not_applicable", (
+                    f"Open record should have verification_status='not_applicable', got: "
+                    f"{record.get('verification_status')}"
+                )
+
+
 class TestCLI:
     """CLI entry point basics."""
 

@@ -65,6 +65,7 @@ def run_cycle(
     search_budget: int = 5,
     broker_state: BrokerState | None = None,
     risk_config: RiskConfig | None = None,
+    exchange_state: object | None = None,
 ) -> CycleResult:
     """Run one autonomous cycle: observe -> propose -> evaluate -> decide -> gate -> execute.
 
@@ -159,6 +160,7 @@ def run_cycle(
                 config=cfg,
                 factor_name=factor_name,
                 event_id=decision.decision_id,
+                exchange_state=exchange_state,
             )
 
             order = execute_paper_order(
@@ -195,6 +197,7 @@ def run_cycles(
     broker_state: BrokerState | None = None,
     risk_config: RiskConfig | None = None,
     audit_logger: AuditLogger | None = None,
+    exchange_state: object | None = None,
 ) -> list[CycleResult]:
     """Run multiple autonomous cycles without human approval between them.
 
@@ -211,6 +214,7 @@ def run_cycles(
             search_budget=search_budget,
             broker_state=broker_state,
             risk_config=risk_config,
+            exchange_state=exchange_state,
         )
         results.append(result)
         if audit_logger is not None:
