@@ -395,6 +395,9 @@ def _place_order_bgc(
     Always uses --paper-trading, posSide long, timeInForce gtc.
     """
     pos_side = "long" if side == "buy" else "short"
+    # Bitget requires price as multiple of 0.01 and qty as integer for stock perps
+    rounded_price = price.quantize(Decimal("0.01"))
+    rounded_qty = max(qty.to_integral_value(), 1)
     cmd = [
         "bgc",
         "--paper-trading",
@@ -410,9 +413,9 @@ def _place_order_bgc(
         "--orderType",
         "limit",
         "--price",
-        str(price),
+        str(rounded_price),
         "--qty",
-        str(qty),
+        str(rounded_qty),
         "--timeInForce",
         "gtc",
         "--posSide",

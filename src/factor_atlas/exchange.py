@@ -64,55 +64,81 @@ def _run_bgc(args: list[str], paper_trading: bool = True) -> dict[str, Any]:
     return dict(json.loads(result.stdout))
 
 
+def _extract_nested(raw: dict[str, Any], *keys: str) -> Any:
+    """Walk into bgc composite responses: data -> section -> ok/data -> list."""
+    node: Any = raw
+    for k in keys:
+        if isinstance(node, dict):
+            node = node.get(k)
+        else:
+            return None
+    return node
+
+
 def query_exchange_state(paper_trading: bool = True) -> ExchangeState:
     """Query account balance, positions, and pending orders from Bitget."""
-    # Balance
     acct = _run_bgc(
         ["account_overview", "--category", "USDT-FUTURES"],
         paper_trading=paper_trading,
     )
-    coins = acct.get("data", {}).get("coin", [])
-    balance = Decimal(0)
-    for c in coins:
-        if c.get("coin") == "USDT":
-            balance = Decimal(c.get("available", "0"))
-            break
 
-    # Positions
-    pos_raw = _run_bgc(
-        ["position", "--action", "info", "--category", "USDT-FUTURES"],
-        paper_trading=paper_trading,
-    )
+    # Balance — composite response: data.assets.data.usdtEquity
+    balance = Decimal(0)
+    assets_data = _extract_nested(acct, "data", "assets", "data")
+    if isinstance(assets_data, dict):
+        balance = Decimal(assets_data.get("usdtEquity", "0"))
+
+    # Positions — composite response: data.positions.data.list[]
     positions: list[ExchangePosition] = []
-    for p in pos_raw.get("data", []):
+    pos_data = _extract_nested(acct, "data", "positions", "data")
+    pos_list: list[Any] = []
+    if isinstance(pos_data, dict):
+        pos_list = pos_data.get("list", [])
+    elif isinstance(pos_data, list):
+        pos_list = pos_data
+    for p in pos_list:
+        if not isinstance(p, dict):
+            continue
+        side_val: str = p.get("holdSide") or p.get("posSide") or "long"
+        size_val: str = p.get("total") or p.get("holdAmount") or "0"
+        price_val: str = p.get("avgPrice") or p.get("averageOpenPrice") or "0"
+        pnl_val: str = p.get("unrealizedPL") or p.get("unrealisedPnl") or "0"
         positions.append(
             ExchangePosition(
-                symbol=p["symbol"],
-                side=p.get("holdSide", "long"),
-                size=Decimal(p.get("total", "0")),
-                entry_price=Decimal(p.get("openPriceAvg", "0")),
-                unrealized_pnl=Decimal(p.get("unrealizedPL", "0")),
+                symbol=p.get("symbol", ""),
+                side=side_val,
+                size=Decimal(size_val),
+                entry_price=Decimal(price_val),
+                unrealized_pnl=Decimal(pnl_val),
             )
         )
 
-    # Pending orders
+    # Pending orders — separate call: data.list[]
     orders_raw = _run_bgc(
         ["order", "--action", "open", "--category", "USDT-FUTURES"],
         paper_trading=paper_trading,
     )
     pending: list[ExchangeOrder] = []
-    order_list = orders_raw.get("data", {})
-    if isinstance(order_list, dict):
-        order_list = order_list.get("orderList", [])
+    order_data = orders_raw.get("data", {})
+    order_list: list[Any] = []
+    if isinstance(order_data, dict):
+        raw_list = order_data.get("list") or order_data.get("orderList") or []
+        order_list = list(raw_list) if isinstance(raw_list, list) else []
+    elif isinstance(order_data, list):
+        order_list = order_data
     for o in order_list or []:
+        if not isinstance(o, dict):
+            continue
+        qty_val: str = o.get("size") or o.get("qty") or "0"
+        status_val: str = o.get("orderStatus") or o.get("status") or "unknown"
         pending.append(
             ExchangeOrder(
                 order_id=o.get("orderId", ""),
                 symbol=o.get("symbol", ""),
                 side=o.get("side", ""),
                 price=Decimal(o.get("price", "0")),
-                qty=Decimal(o.get("size", o.get("qty", "0"))),
-                status=o.get("status", "unknown"),
+                qty=Decimal(qty_val),
+                status=status_val,
             )
         )
 
@@ -133,20 +159,22 @@ def query_order_status(order_id: str, paper_trading: bool = True) -> ExchangeOrd
         paper_trading=paper_trading,
     )
     d = raw.get("data", {})
+    if not isinstance(d, dict):
+        d = {}
     return ExchangeOrder(
         order_id=d.get("orderId", order_id),
         symbol=d.get("symbol", ""),
         side=d.get("side", ""),
         price=Decimal(d.get("price", "0")),
-        qty=Decimal(d.get("size", d.get("qty", "0"))),
-        status=d.get("status", "unknown"),
+        qty=Decimal(d.get("qty", d.get("size", "0"))),
+        status=d.get("orderStatus", d.get("status", "unknown")),
     )
 
 
 def classify_order_status(status: str) -> OrderVerificationStatus:
     """Map a bgc order status string to our verification enum."""
     status_lower = status.lower()
-    if status_lower == "filled":
+    if status_lower in ("filled", "full_fill"):
         return "verified_filled"
     if status_lower in ("cancelled", "canceled"):
         return "verified_cancelled"
@@ -154,6 +182,8 @@ def classify_order_status(status: str) -> OrderVerificationStatus:
         return "verified_rejected"
     if status_lower in ("partial", "partially_filled", "partial_fill"):
         return "verified_partial"
+    if status_lower in ("new", "live", "init"):
+        return "unverified"
     return "unverified"
 
 

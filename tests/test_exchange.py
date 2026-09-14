@@ -14,47 +14,46 @@ from factor_atlas.exchange import (
     query_order_status,
 )
 
-# Realistic bgc account_overview response
+# Realistic bgc account_overview composite response (matches real bgc output)
 _ACCOUNT_OVERVIEW_RESPONSE = json.dumps(
     {
         "data": {
-            "accountId": "123456",
-            "coin": [
-                {
-                    "coin": "USDT",
-                    "available": "48523.12",
-                    "frozen": "1200.00",
-                    "equity": "49723.12",
-                }
-            ],
+            "assets": {
+                "ok": True,
+                "data": {
+                    "usdtEquity": "48523.12",
+                    "accountEquity": "48500.00",
+                },
+            },
+            "positions": {
+                "ok": True,
+                "data": {
+                    "list": [
+                        {
+                            "symbol": "AAPLUSDT",
+                            "holdSide": "long",
+                            "posSide": "long",
+                            "total": "2",
+                            "avgPrice": "330.33",
+                            "unrealizedPL": "-12.50",
+                        },
+                        {
+                            "symbol": "METAUSDT",
+                            "holdSide": "short",
+                            "posSide": "short",
+                            "total": "1",
+                            "avgPrice": "641.76",
+                            "unrealizedPL": "8.20",
+                        },
+                    ]
+                },
+            },
         }
     }
 )
 
-# Realistic bgc position info response
-_POSITION_RESPONSE = json.dumps(
-    {
-        "data": [
-            {
-                "symbol": "AAPLUSDT",
-                "holdSide": "long",
-                "total": "2",
-                "openPriceAvg": "330.33",
-                "unrealizedPL": "-12.50",
-            },
-            {
-                "symbol": "METAUSDT",
-                "holdSide": "short",
-                "total": "1",
-                "openPriceAvg": "641.76",
-                "unrealizedPL": "8.20",
-            },
-        ]
-    }
-)
-
 # Realistic bgc order open response
-_OPEN_ORDERS_RESPONSE = json.dumps({"data": {"orderList": []}})
+_OPEN_ORDERS_RESPONSE = json.dumps({"data": {"list": []}})
 
 # Realistic bgc order detail response
 _ORDER_DETAIL_FILLED = json.dumps(
@@ -64,8 +63,8 @@ _ORDER_DETAIL_FILLED = json.dumps(
             "symbol": "AAPLUSDT",
             "side": "buy",
             "price": "330.33",
-            "size": "2",
-            "status": "filled",
+            "qty": "2",
+            "orderStatus": "filled",
         }
     }
 )
@@ -77,8 +76,8 @@ _ORDER_DETAIL_REJECTED = json.dumps(
             "symbol": "AAPLUSDT",
             "side": "buy",
             "price": "330.33",
-            "size": "2",
-            "status": "cancelled",
+            "qty": "2",
+            "orderStatus": "cancelled",
         }
     }
 )
@@ -113,7 +112,6 @@ class TestQueryExchangeState:
     def test_parses_balance_and_positions(self) -> None:
         responses = {
             "account_overview": _ACCOUNT_OVERVIEW_RESPONSE,
-            "position": _POSITION_RESPONSE,
             "order": _OPEN_ORDERS_RESPONSE,
         }
         with patch(
@@ -147,9 +145,16 @@ class TestQueryExchangeState:
             query_exchange_state()
 
     def test_empty_positions_returns_empty_list(self) -> None:
+        empty_acct = json.dumps(
+            {
+                "data": {
+                    "assets": {"ok": True, "data": {"usdtEquity": "48523.12"}},
+                    "positions": {"ok": True, "data": {"list": []}},
+                }
+            }
+        )
         responses = {
-            "account_overview": _ACCOUNT_OVERVIEW_RESPONSE,
-            "position": json.dumps({"data": []}),
+            "account_overview": empty_acct,
             "order": _OPEN_ORDERS_RESPONSE,
         }
         with patch(

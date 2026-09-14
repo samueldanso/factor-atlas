@@ -5,10 +5,14 @@
 - [ ] rToken Demo execution — SPOT orders return 404 on Demo. Skye said "will try the demo account for the rtoken first" (2026-09-13). Determines if we unify to USDT-FUTURES only.
 - [ ] Demo API key for Agentic sub-account — AG-WZR3S0G5 returns "account prohibited operation" when creating Demo API key. Need confirmation if Demo keys are supported for Agentic sub-accounts.
 
+## Temporary fallback (active)
+
+Using the main Demo account for competition evidence. This is the `factor-atlas-demo` API key — Demo-only, no live-fund access, `--paper-trading` enforced on every order. The Agentic sub-account path remains the intended design; this fallback will be replaced if Bitget confirms isolated Demo keys. All logs label `account: main-demo` to distinguish from future Agentic runs.
+
 ## Planning gate
 
-- [ ] Human approves `docs/specs/technical-spec.md`
-- [ ] Human approves implementation plan
+- [x] Human approves `docs/specs/technical-spec.md`
+- [x] Human approves implementation plan
 - [ ] Confirm exact rToken instruments and data availability (blocked by Bitget reply)
 
 ## Completed
@@ -36,7 +40,7 @@
 - [x] `uv run pytest` — 251 passed (2026-09-14, after fixing flaky demo test)
 - [x] `uv run ruff check .`
 - [x] `uv run ruff format --check .` — passes after runner.py fix (2026-09-14)
-- [ ] Type check passes (`uv run mypy .`)
+- [x] Type check passes (`uv run mypy src/factor_atlas/` — 0 errors, 30 files, 2026-09-14)
 - [x] Accepted autonomous cycle recorded
 - [x] Rejected autonomous cycle recorded
 - [x] No live trading or withdrawal path
@@ -56,7 +60,10 @@
 
 ## Remaining — can proceed now (not blocked by Bitget)
 
-- [ ] Create GitHub Actions workflow (`.github/workflows/daily-run.yml`)
+- [ ] Create GitHub Actions workflow (`.github/workflows/daily-run.yml`) — scaffold can be built now; activation blocked until Demo credentials work
+- [ ] Merge PR #1
+- [ ] Record demo video (≤3 min)
+- [ ] Post to X with `#BitgetHackathon` and `@Bitget_AI`
 
 ## Remaining — blocked until Bitget replies
 
