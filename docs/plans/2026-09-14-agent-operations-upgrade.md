@@ -17,6 +17,10 @@
 - `bgc` orders always use `--paper-trading`
 - No `as any`, `@ts-ignore`, or type suppression equivalents
 - Commit after each task with `type(scope): description` format
+- pandas and numpy are already in `pyproject.toml` dependencies — no `uv add` needed
+- bgc CLI is `@bitget-ai/bitget-agent-cli` (npm global): `npm install -g @bitget-ai/bitget-agent-cli`
+- Credentials are loaded via `source .env` — the `.env` file exists at project root
+- Do NOT delete `docs/evidence/` until GitHub Pages is confirmed live and README/SUBMISSION links are updated
 
 ---
 
@@ -794,15 +798,17 @@ git commit -m "feat(risk): add ATR-based exits and sized quantity to decision pr
 
 **Files:**
 - Modify: `src/factor_atlas/runner.py` — integrate EvidenceLogger and compute_position_size
-- Modify: `src/factor_atlas/orchestrator.py` — pass OHLCV for sizing
+- Modify: `src/factor_atlas/orchestrator.py` — thread sized_quantities through to decision providers
 
 **Interfaces:**
 - Consumes: `EvidenceLogger` from Task 1, `compute_atr` + `compute_position_size` from Task 2, ATR exits from Task 3
 - Produces: Runner that writes structured evidence + uses ATR sizing
 
-This is the main wiring task. The runner calls the evidence logger at each pipeline stage and computes ATR-based quantity before passing to the decision provider.
+This is the main wiring task, split into two phases: (A) evidence logging and (B) sizing integration.
 
-- [ ] **Step 1: Import evidence and sizing in runner.py**
+**PHASE A: Wire evidence logging**
+
+- [ ] **Step 1: Import evidence in runner.py and create logger in `run_paper_session`**
 
 Add to imports at top of `runner.py`:
 
@@ -810,8 +816,6 @@ Add to imports at top of `runner.py`:
 from factor_atlas.evidence import EvidenceLogger
 from factor_atlas.sizing import compute_atr, compute_position_size
 ```
-
-- [ ] **Step 2: Create evidence logger in `run_paper_session`**
 
 After `audit_logger` creation (~line 794), add:
 
@@ -821,7 +825,7 @@ After `audit_logger` creation (~line 794), add:
     evidence = EvidenceLogger(logs_dir=logs_dir, run_id=run_id)
 ```
 
-- [ ] **Step 3: Log run start**
+- [ ] **Step 2: Log run start after LLM provider setup**
 
 After the LLM provider is set up (~line 847), add:
 
@@ -833,9 +837,41 @@ After the LLM provider is set up (~line 847), add:
     )
 ```
 
-- [ ] **Step 4: Compute ATR per instrument and pass sized quantity to orchestrator**
+- [ ] **Step 3: Log evidence at each cycle stage**
 
-Before calling `run_cycles` (~line 869), compute ATR for each instrument and build a dict:
+After each cycle result, inside the `for result in results:` loop that calls `_print_cycle_summary` (~line 883), add evidence logging calls for event, decision, and risk. See the EvidenceLogger methods from Task 1 — call `log_event()` with the hypothesis/validation data from `result`, `log_decision()` with the decision or status, and `log_risk()` with gate_results if present.
+
+For each accepted cycle that gets a bgc order (~line 891-914), also call `evidence.log_trade()` with the order details.
+
+- [ ] **Step 4: Log run end**
+
+After the run summary print (~line 1000):
+
+```python
+    evidence.log_run_end(
+        cycles=len(results),
+        accepted=manifest["accepted_count"],
+        skipped=manifest["rejected_count"],
+    )
+```
+
+- [ ] **Step 5: Run tests to verify evidence wiring doesn't break existing tests**
+
+Run: `uv run pytest --tb=short -q`
+Expected: All 312 existing tests pass (evidence logger writes to files but tests use tmp_path or fixture mode)
+
+- [ ] **Step 6: Commit evidence wiring**
+
+```bash
+git add src/factor_atlas/runner.py
+git commit -m "feat(runner): wire evidence logging into paper session"
+```
+
+**PHASE B: Wire ATR sizing**
+
+- [ ] **Step 7: Compute ATR per instrument before run_cycles**
+
+Before calling `run_cycles` (~line 869), add:
 
 ```python
     # Compute ATR per instrument for sizing
@@ -854,129 +890,24 @@ Before calling `run_cycles` (~line 869), compute ATR for each instrument and bui
             )
 ```
 
-Pass `sized_quantities` through `run_cycles` → `run_cycle` → decision provider (update orchestrator signatures to thread it through).
+- [ ] **Step 8: Thread sized_quantities through orchestrator**
 
-- [ ] **Step 5: Log evidence at each cycle stage**
-
-After each cycle result, log the evidence. Add inside the `for result in results:` loop that calls `_print_cycle_summary` (~line 883):
+Update `run_cycles()` and `run_cycle()` in `orchestrator.py` to accept `sized_quantities: dict[str, Decimal] | None = None`. Pass it through to the decision provider's `decide()` call at line 126:
 
 ```python
-        # Log evidence for each cycle
-        instrument = result.snapshot.instrument
-        exec_sym = research_to_execution(instrument)
+    # In run_cycle, before calling decision_provider.decide():
+    qty = None
+    if sized_quantities:
+        qty = sized_quantities.get(snapshot.instrument)
 
-        if result.hypotheses and result.validated:
-            hyp, val = result.validated[0] if result.validated else (result.hypotheses[0], None)
-            evidence.log_event(
-                cycle_id=result.cycle_id,
-                instrument=instrument,
-                price=str(result.snapshot.close),
-                source="bitget-demo" if mode == "demo" else "fixture",
-                hypothesis={
-                    "factor_name": hyp.factor_name,
-                    "parameters": dict(hyp.parameters),
-                    "direction": hyp.direction,
-                    "rationale": hyp.rationale,
-                },
-                validation={
-                    "sharpe": val.metrics.sharpe_ratio.value if val else 0,
-                    "max_drawdown": val.metrics.max_drawdown.value if val else 0,
-                    "passed": val.passed if val else False,
-                    "observations": val.observations if val else 0,
-                } if val else None,
-            )
-        else:
-            evidence.log_event(
-                cycle_id=result.cycle_id,
-                instrument=instrument,
-                price=str(result.snapshot.close),
-                source="bitget-demo" if mode == "demo" else "fixture",
-                hypothesis=None,
-                validation=None,
-            )
-
-        if result.decision:
-            evidence.log_decision(
-                cycle_id=result.cycle_id,
-                instrument=exec_sym,
-                selected_hypothesis=result.decision.hypothesis_id,
-                side=result.decision.side,
-                quantity=str(result.decision.quantity),
-                price=str(result.decision.price),
-                rationale=result.decision.rationale,
-            )
-        else:
-            evidence.log_decision(
-                cycle_id=result.cycle_id,
-                instrument=exec_sym,
-                selected_hypothesis=None,
-                side=None,
-                quantity=None,
-                price=None,
-                rationale=result.status,
-            )
-
-        if result.gate_results:
-            gates = [
-                {"gate_name": g.gate_name, "passed": g.passed, "reason": g.reason}
-                for g in result.gate_results
-            ]
-            verdict = "all_passed" if all(g.passed for g in result.gate_results) else "blocked"
-            evidence.log_risk(
-                cycle_id=result.cycle_id,
-                instrument=exec_sym,
-                gates=gates,
-                verdict=verdict,
-            )
+    decision = decision_provider.decide(snapshot, validated, cycle_id, quantity=qty)
 ```
 
-- [ ] **Step 6: Log trades (entries and exits)**
+Update `run_cycles` to forward `sized_quantities` to each `run_cycle` call.
 
-In the entry order placement block (~line 891-914), after a successful bgc order:
+- [ ] **Step 9: Update `_process_demo_exits` to use ATR**
 
-```python
-                evidence.log_trade(
-                    cycle_id=result.cycle_id,
-                    record_type="entry",
-                    instrument=exec_sym,
-                    side=d.side,
-                    price=str(d.price),
-                    size=str(d.quantity),
-                    order_id=str(order_id),
-                    status="filled",
-                )
-```
-
-In `_process_demo_exits`, pass the evidence logger and log each exit.
-
-- [ ] **Step 7: Log run end**
-
-After the run summary print (~line 1000):
-
-```python
-    evidence.log_run_end(
-        cycles=len(results),
-        accepted=manifest["accepted_count"],
-        skipped=manifest["rejected_count"],
-    )
-```
-
-- [ ] **Step 8: Update `_should_exit` calls to pass ATR**
-
-In `_process_demo_exits`, compute ATR for each position's instrument and pass to `_should_exit`:
-
-```python
-    # Fetch ATR for exit evaluation
-    for instrument, pos in broker_state.open_positions.items():
-        exec_sym = RESEARCH_TO_EXECUTION.get(instrument, instrument)
-        current_price = perp_prices.get(exec_sym)
-        if current_price is None:
-            continue
-        atr = atr_values.get(instrument)  # From research OHLCV
-        should_exit, reason = _should_exit(pos, current_price, now, risk_config, atr=atr)
-```
-
-This requires threading `atr_values` and `evidence` through the function. Update `_process_demo_exits` signature:
+Add `atr_values` parameter to `_process_demo_exits` and pass it through to `_should_exit`:
 
 ```python
 def _process_demo_exits(
@@ -990,16 +921,29 @@ def _process_demo_exits(
 ) -> None:
 ```
 
-- [ ] **Step 9: Run full test suite + type check**
+For each position, look up `atr = (atr_values or {}).get(instrument)` and pass to `_should_exit(pos, current_price, now, risk_config, atr=atr)`.
+
+When a position is closed and `evidence` is not None, call `evidence.log_trade()` with record_type="exit".
+
+- [ ] **Step 10: Update the caller in `run_paper_session` to pass atr_values and evidence**
+
+```python
+            _process_demo_exits(
+                broker_state, perp_prices, risk_config, config_hash, paper_log_f,
+                atr_values=atr_values, evidence=evidence,
+            )
+```
+
+- [ ] **Step 11: Run full test suite + type check**
 
 Run: `uv run pytest --tb=short -q && uv run mypy . && uv run ruff check .`
-Expected: All pass
+Expected: All pass. Fix any signature mismatches in tests (some test mocks may need `quantity` param added).
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 12: Commit sizing wiring**
 
 ```bash
 git add src/factor_atlas/runner.py src/factor_atlas/orchestrator.py
-git commit -m "feat(runner): wire evidence logging and ATR sizing into paper session"
+git commit -m "feat(runner): wire ATR sizing and exits into paper session"
 ```
 
 ---
@@ -1060,20 +1004,19 @@ def run_continuous(
     stops after that many rounds (useful for GitHub Actions cron).
     """
     import signal
-    import time
+    import threading
 
-    shutdown = False
+    shutdown_event = threading.Event()
 
     def _handle_signal(signum: int, frame: object) -> None:
-        nonlocal shutdown
         print(f"\nReceived signal {signum}, finishing current round...")
-        shutdown = True
+        shutdown_event.set()
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
     round_num = 0
-    while not shutdown:
+    while not shutdown_event.is_set():
         round_num += 1
         print(f"\n{'=' * 60}")
         print(f"  Continuous round {round_num} | interval={interval}s")
@@ -1087,13 +1030,9 @@ def run_continuous(
             print(f"  Reached max_rounds={max_rounds}, stopping.")
             break
 
-        if not shutdown:
+        if not shutdown_event.is_set():
             print(f"  Sleeping {interval}s until next round...")
-            # Sleep in small increments so SIGINT is responsive
-            for _ in range(interval):
-                if shutdown:
-                    break
-                time.sleep(1)
+            shutdown_event.wait(timeout=interval)
 ```
 
 Update `__all__` to include `run_continuous`.
@@ -1251,24 +1190,36 @@ if __name__ == "__main__":
 Run: `uv run python scripts/archive_stale_runs.py`
 Expected: 9 runs archived, remaining 12 moved to `runs/`
 
+NOTE: The 12 real runs under `runs/` still use old field names (`bgc_order_id`, `category`, `quantity`) in their `paper_log.jsonl` files. This is acceptable — those are historical artifacts. The NEW `logs/trades.jsonl` (written by the evidence logger going forward) uses Bitget field names (`orderId`, `productType`, `size`). Judges will see the new logs. Do NOT rewrite old JSONL files — that would falsify history.
+
 - [ ] **Step 3: Reset positions_state.json to match Bitget Demo**
 
-The exchange shows 7 open positions. Write a fresh `positions_state.json` that matches reality. Use `bgc --paper-trading position --action info --category USDT-FUTURES` output to build it.
+The exchange was verified on Sep 14 12:24 UTC and shows 7 open positions:
+- AAPLUSDT short 15 @ $331.71 (unrealized -$16.90)
+- METAUSDT short 7 @ $640.90 (unrealized -$142.95)
+- METAUSDT long 7 @ $640.14 (unrealized +$148.26)
+- NVDAUSDT short 1 @ $213.10 (unrealized -$1.44)
+- NVDAUSDT long 1 @ $218.07 (unrealized -$3.53)
+- TSLAUSDT short 1 @ $358.73 (unrealized -$0.23)
+- TSLAUSDT long 1 @ $358.18 (unrealized +$0.78)
 
-- [ ] **Step 4: Delete docs/evidence/**
+0 pending orders. 21 filled orders in history.
 
+Before resetting, re-verify with:
 ```bash
-rm -rf docs/evidence/
+set -a && source .env && set +a
+bgc --paper-trading position --action info --category USDT-FUTURES
 ```
 
-This will be replaced by GitHub Pages serving from `artifacts/paper-trading/logs/` and `runs/`.
+If exchange state matches, write a fresh `positions_state.json`. If credentials fail, skip this step and flag it — do NOT guess.
 
-- [ ] **Step 5: Commit the restructuring**
+- [ ] **Step 4: Commit the restructuring**
+
+NOTE: Do NOT delete `docs/evidence/` here — those htmlpreview links are the only working evidence URLs judges have. Deletion happens in Task 8 AFTER GitHub Pages is confirmed live and all links are updated.
 
 ```bash
-git add artifacts/ docs/ scripts/archive_stale_runs.py
-git rm -r docs/evidence/
-git commit -m "chore: archive stale runs, restructure artifacts, remove docs/evidence"
+git add artifacts/ scripts/archive_stale_runs.py
+git commit -m "chore: archive stale runs, restructure artifacts directory"
 ```
 
 ---
@@ -1307,8 +1258,7 @@ jobs:
           version: "latest"
 
       - name: Install bgc CLI
-        run: |
-          npm install -g @anthropic-ai/bitget-agent-cli || npm install -g bitget-agent-cli
+        run: npm install -g @bitget-ai/bitget-agent-cli
 
       - name: Install dependencies
         run: uv sync
@@ -1342,6 +1292,7 @@ jobs:
           git config user.email "bot@factor-atlas.dev"
           git add artifacts/paper-trading/logs/ artifacts/paper-trading/runs/ artifacts/paper-trading/positions_state.json
           git diff --cached --quiet || git commit -m "evidence: paper trading run $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git pull --rebase origin main || true
           git push
 ```
 
@@ -1481,12 +1432,26 @@ Demo video: [YOU — record and upload, then paste URL here]
 X post: [YOU — post and paste URL here]
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Confirm GitHub Pages is live, then delete docs/evidence/**
+
+First verify Pages is serving at `https://samueldanso.github.io/factor-atlas/logs/`:
+```bash
+curl -s -o /dev/null -w "%{http_code}" https://samueldanso.github.io/factor-atlas/logs/index.html
+```
+Expected: 200
+
+Only AFTER confirming Pages is live:
+```bash
+git rm -r docs/evidence/
+```
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add .github/workflows/pages.yml artifacts/paper-trading/logs/index.html \
   README.md docs/SUBMISSION.md
-git commit -m "ci: add GitHub Pages deployment and update evidence links"
+git diff --cached --quiet || true
+git commit -m "ci: add GitHub Pages deployment, update evidence links, remove old docs/evidence"
 ```
 
 ---
