@@ -8,24 +8,22 @@
 
 **Bitget AI Genesis Season 2 — Track 2: Agentic Trading → Factor Discovery Agent**
 
-Autonomous agent that discovers market factors, validates trading hypotheses, and executes paper trades on Bitget Demo — with no human in the loop.
+Autonomous agent that discovers market factors on Bitget **rToken** US stocks, validates trading hypotheses, and executes paper trades on **stock perpetuals** via Bitget Demo — with no human in the loop.
 
 > **Judges:** [Evidence Report (HTML)](docs/evidence/evidence_report.html) · [Paper Log (JSONL)](docs/evidence/paper_log.jsonl) · [Gate Rejection Evidence](docs/evidence/evidence_report_gate_rejection.html) · [Submission Form](docs/SUBMISSION.md) · [Run It Yourself](#quickstart)
 
 ---
 
-## Instrument Watchlist
+## Two-Layer Instrument Architecture
 
-FactorAtlas trades **Bitget USDT-margined US stock perpetuals** (category: `USDT-FUTURES`):
+FactorAtlas uses **two instrument layers** — rToken SPOT for research, stock perpetuals for execution:
 
-| Symbol | Underlying | Category | Role |
-|--------|-----------|----------|------|
-| `AAPLUSDT` | Apple Inc. | USDT-FUTURES | Execution (Demo paper trading) |
-| `NVDAUSDT` | NVIDIA Corp. | USDT-FUTURES | Execution (Demo paper trading) |
-| `TSLAUSDT` | Tesla Inc. | USDT-FUTURES | Execution (Demo paper trading) |
-| `METAUSDT` | Meta Platforms | USDT-FUTURES | Execution (Demo paper trading) |
+| Layer | Symbols | Category | Purpose |
+|-------|---------|----------|---------|
+| **Research** (rToken SPOT) | `RAAPLUSDT` · `RNVDAUSDT` · `RTSLAUSDT` · `RMETAUSDT` | SPOT | 24/7 market data, factor analysis, hypothesis validation |
+| **Execution** (Stock Perps) | `AAPLUSDT` · `NVDAUSDT` · `TSLAUSDT` · `METAUSDT` | USDT-FUTURES | Demo paper trading, order placement, fill verification |
 
-Research data sourced from rToken SPOT tickers (`RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT`) — 24/7 market data for factor analysis. Execution routes through stock perp contracts above.
+**Why two layers?** rTokens (Reality tokens) provide 24/7 price data for US stocks on Bitget — ideal for continuous factor research. Execution routes through USDT-margined stock perpetual contracts because rToken SPOT order placement is not available in the Demo environment. Both layers track the same underlying assets (Apple, NVIDIA, Tesla, Meta). The agent maps `RAAPLUSDT` → `AAPLUSDT` automatically during reconciliation.
 
 ---
 
@@ -33,12 +31,12 @@ Research data sourced from rToken SPOT tickers (`RAAPLUSDT`, `RNVDAUSDT`, `RTSLA
 
 Every cycle, the agent autonomously:
 
-1. **Observes** — pulls live price data for US stock perpetuals via Bitget API
+1. **Observes** — pulls live rToken SPOT price data (`RAAPLUSDT`, `RNVDAUSDT`, etc.) via Bitget API
 2. **Proposes** — Claude Sonnet 4.6 (AWS Bedrock) proposes factor hypotheses from a fixed vocabulary
 3. **Validates** — walk-forward backtest on historical data → Sharpe, Sortino, drawdown, win rate
 4. **Decides** — LLM selects the strongest validated hypothesis and proposes a trade
 5. **Risk gates** — 14 deterministic gates verify: positions, balance, exposure, cooldowns, concentration
-6. **Executes** — if all gates pass, places a limit order on Bitget Demo (`--paper-trading`)
+6. **Executes** — if all gates pass, places a limit order on stock perp (`AAPLUSDT`) via Bitget Demo (`--paper-trading`)
 7. **Verifies** — queries Bitget Demo for actual `orderStatus` (`filled`, `cancelled`, `rejected`)
 8. **Records** — logs full trace: event → hypothesis → decision rationale → gate results → order outcome
 
@@ -103,7 +101,8 @@ Cycle: NVDAUSDT
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Market Event                          │
-│         (live price data from Bitget SPOT API)           │
+│  rToken SPOT data: RAAPLUSDT, RNVDAUSDT, RTSLAUSDT ...  │
+│         (24/7 price data from Bitget SPOT API)           │
 └─────────────┬───────────────────────────────────────────┘
               ▼
 ┌─────────────────────────────────────────────────────────┐
@@ -136,8 +135,9 @@ Cycle: NVDAUSDT
               ▼                      ▼
 ┌──────────────────────┐  ┌──────────────────────────────┐
 │   Bitget Demo API    │  │   Order Rejected             │
-│   Place limit order  │  │   Log gate + reason          │
-│   --paper-trading    │  │   "positions 3 >= 3"         │
+│   Stock perp order   │  │   Log gate + reason          │
+│   AAPLUSDT (FUTURES) │  │   "positions 3 >= 3"         │
+│   --paper-trading    │  │                              │
 └─────────┬────────────┘  └──────────────────────────────┘
           ▼
 ┌──────────────────────┐
@@ -277,9 +277,9 @@ The LLM can only propose from this fixed set. It cannot invent factors or genera
 | Language | Python 3.11 (`uv` managed) |
 | LLM | Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6` via AWS Bedrock) |
 | Exchange | Bitget Demo API via `bgc` CLI (`--paper-trading`) |
-| Category | `USDT-FUTURES` (stock perpetuals) |
-| Instruments | `AAPLUSDT`, `NVDAUSDT`, `TSLAUSDT`, `METAUSDT` |
-| Research data | rToken SPOT (`RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT`) |
+| Research layer | rToken SPOT: `RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT` (24/7 market data) |
+| Execution layer | USDT-FUTURES stock perps: `AAPLUSDT`, `NVDAUSDT`, `TSLAUSDT`, `METAUSDT` (Demo orders) |
+| Symbol mapping | `RAAPLUSDT` → `AAPLUSDT`, `RNVDAUSDT` → `NVDAUSDT`, etc. (auto-reconciled) |
 | Tests | 312 passing (`pytest`), `mypy` clean, `ruff` clean |
 
 ---

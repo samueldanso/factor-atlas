@@ -33,7 +33,7 @@ Copy-paste these into the Google Form. Fields marked [YOU] need your input.
 **Project Name:** FactorAtlas
 
 **One-line Project Summary (140 chars max):**
-Autonomous factor-discovery agent that proposes, validates, and paper-trades US stock perpetuals on Bitget Demo with full decision explainability.
+Factor-discovery agent: mines rToken market data, validates hypotheses, executes stock perp paper trades on Bitget Demo autonomously.
 
 ---
 
@@ -41,9 +41,11 @@ Autonomous factor-discovery agent that proposes, validates, and paper-trades US 
 
 **Part 1 · Thesis (highest weight)**
 
-FactorAtlas is an autonomous factor-discovery agent for Bitget US stock perpetuals. The core hypothesis: an LLM can propose market factor hypotheses (momentum, mean reversion, volatility breakout), but every hypothesis must pass deterministic walk-forward validation before the agent is allowed to trade.
+FactorAtlas is an autonomous factor-discovery agent built on Bitget's rToken and stock perpetual instruments. It uses a two-layer architecture: **rToken SPOT market data** (RAAPLUSDT, RNVDAUSDT, RTSLAUSDT, RMETAUSDT) for 24/7 factor research and hypothesis validation, and **USDT-FUTURES stock perpetuals** (AAPLUSDT, NVDAUSDT, TSLAUSDT, METAUSDT) for Demo paper-trading execution. Both layers track the same underlying US stocks (Apple, NVIDIA, Tesla, Meta).
 
-Signal sources: live rToken SPOT price data (AAPL, NVDA, TSLA, META) fetched via Bitget API. Decision logic: Claude Sonnet 4.6 (AWS Bedrock) proposes hypotheses from a fixed factor vocabulary, then selects the strongest validated candidate. Risk-control design: 14 deterministic gates check balance, position limits, exposure, cooldowns, concentration, and pending orders before any order reaches the exchange. The LLM cannot bypass gates — a veto is final.
+The core hypothesis: an LLM can propose market factor hypotheses (momentum, mean reversion, volatility breakout), but every hypothesis must pass deterministic walk-forward validation on rToken price data before the agent is allowed to execute on stock perps.
+
+Signal sources: live rToken SPOT price data fetched via Bitget API — 24/7 candles for continuous factor analysis. Decision logic: Claude Sonnet 4.6 (AWS Bedrock) proposes hypotheses from a fixed factor vocabulary, then selects the strongest validated candidate. Execution: orders placed on USDT-FUTURES stock perps via Bitget Demo API. Risk-control design: 14 deterministic gates check balance, position limits, exposure, cooldowns, concentration, and pending orders before any order reaches the exchange. The LLM cannot bypass gates — a veto is final.
 
 The specific pain point: existing trading agents either (a) let the LLM make unchecked decisions, or (b) use hardcoded strategies with no adaptability. FactorAtlas separates the creative layer (LLM proposes) from the safety layer (deterministic validation + risk gates), so the agent adapts to market conditions while remaining auditable and bounded.
 
