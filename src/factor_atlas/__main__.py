@@ -50,6 +50,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output directory for paper logs. Default: artifacts/paper-trading/",
     )
 
+    # --- status ---
+    sub.add_parser(
+        "status", help="Show open positions, closed trade metrics, and session count."
+    )
+
+    # --- history ---
+    sub.add_parser("history", help="List all paper-trading sessions with key stats.")
+
+    # --- explain ---
+    explain_parser = sub.add_parser(
+        "explain", help="Detailed breakdown of a single session's decisions."
+    )
+    explain_parser.add_argument("run_id", help="Run ID to explain.")
+
     return parser
 
 
@@ -78,9 +92,33 @@ def main(argv: list[str] | None = None) -> int:
                 cycles=args.cycles,
                 output_dir=output_dir,
             )
-        except NotImplementedError as e:
+        except (NotImplementedError, RuntimeError, OSError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
+        return 0
+
+    if args.command == "status":
+        from pathlib import Path
+
+        from factor_atlas.cli_commands import cmd_status
+
+        print(cmd_status(Path("artifacts/paper-trading")))
+        return 0
+
+    if args.command == "history":
+        from pathlib import Path
+
+        from factor_atlas.cli_commands import cmd_history
+
+        print(cmd_history(Path("artifacts/paper-trading")))
+        return 0
+
+    if args.command == "explain":
+        from pathlib import Path
+
+        from factor_atlas.cli_commands import cmd_explain
+
+        print(cmd_explain(args.run_id, Path("artifacts/paper-trading")))
         return 0
 
     parser.print_help()
