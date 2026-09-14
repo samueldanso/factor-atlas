@@ -11,9 +11,8 @@
 Autonomous agent that discovers market factors on Bitget **rToken** US stocks, validates trading hypotheses, and executes paper trades on **stock perpetuals** via Bitget Demo — with no human in the loop.
 
 > **Judges — start here:**
-> - [Evidence Report](https://htmlpreview.github.io/?https://github.com/samueldanso/factor-atlas/blob/main/docs/evidence/evidence_report.html) — open in browser, visual proof of full cycle
-> - [Gate Rejection Evidence](https://htmlpreview.github.io/?https://github.com/samueldanso/factor-atlas/blob/main/docs/evidence/evidence_report_gate_rejection.html) — risk gate blocking a trade
-> - [Paper Log (JSONL)](docs/evidence/paper_log.jsonl) — raw trade records with Bitget `orderId`, `orderStatus`, `symbol`
+> - [Evidence Logs](https://samueldanso.github.io/factor-atlas/logs/) — agent.log, events, decisions, risk, trades
+> - [Paper Log (JSONL)](https://samueldanso.github.io/factor-atlas/logs/trades.jsonl) — raw trade records with Bitget `orderId`
 > - [Submission Form](docs/SUBMISSION.md) — all form answers ready to paste
 > - [Run It Yourself](#quickstart) — `uv sync && uv run python -m factor_atlas run --mode fixture --cycles 2`
 
@@ -224,7 +223,7 @@ artifacts/paper-trading/<run-id>/
   evidence_report.html  # Visual report for judges (open in browser)
 ```
 
-Committed evidence: [`docs/evidence/`](docs/evidence/)
+Evidence logs: [GitHub Pages](https://samueldanso.github.io/factor-atlas/logs/) · [`artifacts/paper-trading/logs/`](artifacts/paper-trading/logs/)
 
 ---
 

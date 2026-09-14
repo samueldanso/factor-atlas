@@ -107,9 +107,9 @@ Bitget's bgc CLI and Signal MCP tools are solid for building autonomous agents. 
 
 ```
 Project link: https://github.com/samueldanso/factor-atlas
-Evidence report (visual): https://htmlpreview.github.io/?https://github.com/samueldanso/factor-atlas/blob/main/docs/evidence/evidence_report.html
-Gate rejection evidence (visual): https://htmlpreview.github.io/?https://github.com/samueldanso/factor-atlas/blob/main/docs/evidence/evidence_report_gate_rejection.html
-Run records (paper log JSONL): https://github.com/samueldanso/factor-atlas/blob/main/docs/evidence/paper_log.jsonl
+Evidence logs: https://samueldanso.github.io/factor-atlas/logs/
+Agent timeline: https://samueldanso.github.io/factor-atlas/logs/agent.log
+Trade records: https://samueldanso.github.io/factor-atlas/logs/trades.jsonl
 Demo video: [YOU — record and upload, then paste URL here]
 X post: [YOU — post and paste URL here]
 ```
