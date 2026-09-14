@@ -1,73 +1,104 @@
-# FactorAtlas — Autonomous Factor Discovery Agent
+# FactorAtlas
 
-**Bitget AI Genesis Season 2 — Track 2: Agentic Trading**
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-312%20passing-brightgreen.svg)](tests/)
+[![Bitget Demo](https://img.shields.io/badge/Bitget-Demo%20Paper%20Trading-00C087.svg)](https://www.bitget.com/)
+[![LLM](https://img.shields.io/badge/LLM-Claude%20Sonnet%204.6-blueviolet.svg)](https://aws.amazon.com/bedrock/)
+[![Track](https://img.shields.io/badge/Track%202-Agentic%20Trading-orange.svg)](#track-alignment)
 
-FactorAtlas is an autonomous trading agent that discovers market factors, validates trading hypotheses, and executes paper trades on Bitget Demo — with no human in the loop.
+**Bitget AI Genesis Season 2 — Track 2: Agentic Trading → Factor Discovery Agent**
+
+Autonomous agent that discovers market factors, validates trading hypotheses, and executes paper trades on Bitget Demo — with no human in the loop.
+
+> **Judges:** [Evidence Report (HTML)](docs/evidence/evidence_report.html) · [Paper Log (JSONL)](docs/evidence/paper_log.jsonl) · [Gate Rejection Evidence](docs/evidence/evidence_report_gate_rejection.html) · [Submission Form](docs/SUBMISSION.md) · [Run It Yourself](#quickstart)
+
+---
+
+## Instrument Watchlist
+
+FactorAtlas trades **Bitget USDT-margined US stock perpetuals** (category: `USDT-FUTURES`):
+
+| Symbol | Underlying | Category | Role |
+|--------|-----------|----------|------|
+| `AAPLUSDT` | Apple Inc. | USDT-FUTURES | Execution (Demo paper trading) |
+| `NVDAUSDT` | NVIDIA Corp. | USDT-FUTURES | Execution (Demo paper trading) |
+| `TSLAUSDT` | Tesla Inc. | USDT-FUTURES | Execution (Demo paper trading) |
+| `METAUSDT` | Meta Platforms | USDT-FUTURES | Execution (Demo paper trading) |
+
+Research data sourced from rToken SPOT tickers (`RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT`) — 24/7 market data for factor analysis. Execution routes through stock perp contracts above.
+
+---
 
 ## What It Does
 
-Every cycle, the agent:
+Every cycle, the agent autonomously:
 
-1. **Observes** — pulls live price data for US stock perpetuals (AAPL, NVDA, TSLA, META)
-2. **Proposes** — Claude Sonnet (AWS Bedrock) analyzes the data and proposes factor hypotheses (e.g. "AAPL shows mean reversion — price dropped 2% below 20-day EMA, expect bounce")
-3. **Validates** — runs walk-forward backtest on historical data, computes Sharpe ratio, drawdown, win rate
-4. **Decides** — LLM selects the strongest validated hypothesis and proposes a trade (direction, price, size)
-5. **Risk checks** — 14 gates verify: position limits, balance, exposure, cooldowns, concentration, pending orders
-6. **Executes** — if all gates pass, places a limit order on Bitget Demo via `bgc --paper-trading`
-7. **Verifies** — queries Bitget Demo for the actual order status (filled, rejected, cancelled)
-8. **Records** — logs the full trace: event, hypothesis, factors, decision rationale, gate results, order outcome
+1. **Observes** — pulls live price data for US stock perpetuals via Bitget API
+2. **Proposes** — Claude Sonnet 4.6 (AWS Bedrock) proposes factor hypotheses from a fixed vocabulary
+3. **Validates** — walk-forward backtest on historical data → Sharpe, Sortino, drawdown, win rate
+4. **Decides** — LLM selects the strongest validated hypothesis and proposes a trade
+5. **Risk gates** — 14 deterministic gates verify: positions, balance, exposure, cooldowns, concentration
+6. **Executes** — if all gates pass, places a limit order on Bitget Demo (`--paper-trading`)
+7. **Verifies** — queries Bitget Demo for actual `orderStatus` (`filled`, `cancelled`, `rejected`)
+8. **Records** — logs full trace: event → hypothesis → decision rationale → gate results → order outcome
 
-If the factors don't support a trade, the agent explicitly decides **not to trade** and logs why. A no-trade decision is evidence of discipline, not a failure.
+If factors don't support a trade, the agent explicitly decides **not to trade** and logs why.
 
-## Evidence
+---
 
-### Paper Trading Results
+## Paper Trading Results
 
-| Metric | Value |
-|--------|-------|
-| Total trades | 3 |
-| Win rate | 66.7% |
-| Sharpe ratio | 3.46 |
-| Sortino ratio | 4.79 |
-| Max drawdown | 7.11 |
+| Metric | Value | Label |
+|--------|-------|-------|
+| Total closed trades | 3 | observed |
+| Win rate | 66.7% | observed |
+| Sharpe ratio | 3.46 | observed |
+| Sortino ratio | 4.79 | observed |
+| Max drawdown | $7.11 | observed |
+| Avg hold time | 25 hours | observed |
+| Turnover | $1,548.64 | observed |
+
+Test period: September 12–14, 2026 (Demo paper trading). All values observed from actual execution, not backtests.
 
 ### Sample Cycle — Accepted Trade
 
 ```
 Cycle: AAPLUSDT
-  Event:      Live SPOT candle data (90 days, 1D interval)
-  Hypothesis: "mean_reversion — price below EMA, expect bounce"
-  Validation: Sharpe 0.42 (walk-forward, 90-day window)
-  Decision:   BUY @ $330.77, qty 1
-  Gates:      14/14 passed (positions 0 < 3, balance OK, exposure OK)
-  Execution:  Bitget Demo order 1483324512122851328 — filled
-  Result:     Position opened, balance updated
+  timestamp:    2026-09-12T03:50:00Z
+  Hypothesis:   mean_reversion — price below EMA, expect bounce
+  Validation:   Sharpe 0.42 (walk-forward, 90-day window)
+  Decision:     BUY @ $330.77, qty 1
+  Gates:        14/14 passed (positions 0 < 3, balance OK, exposure OK)
+  orderStatus:  filled (orderId 1483324512122851328)
+  Result:       Position opened, balance updated
 ```
 
 ### Sample Cycle — Rejected Trade
 
 ```
 Cycle: TSLAUSDT
-  Event:      Live SPOT candle data (90 days, 1D interval)
-  Hypothesis: "volatility_breakout — ATR expansion signals directional move"
-  Validation: Sharpe 0.31 (walk-forward, 90-day window)
-  Decision:   BUY @ $357.99, qty 1
-  Gates:      FAILED — max_position: positions 3 >= 3
-  Execution:  Order rejected by risk gate
-  Result:     No position opened. Agent waiting for next cycle.
+  timestamp:    2026-09-12T04:15:00Z
+  Hypothesis:   volatility_breakout — ATR expansion signals directional move
+  Validation:   Sharpe 0.31 (walk-forward, 90-day window)
+  Decision:     BUY @ $357.99, qty 1
+  Gates:        FAILED — max_position: positions 3 >= 3
+  orderStatus:  rejected (risk gate veto)
+  Result:       No position opened. Agent waiting for next cycle.
 ```
 
 ### Sample Cycle — No Trade
 
 ```
 Cycle: NVDAUSDT
-  Event:      Live SPOT candle data (90 days, 1D interval)
-  Hypothesis: None — LLM found no factor with sufficient evidence
-  Decision:   NO TRADE
-  Result:     Agent chose not to trade. Factors did not align strongly enough.
+  timestamp:    2026-09-12T04:30:00Z
+  Hypothesis:   None — LLM found no factor with sufficient evidence
+  Decision:     NO TRADE
+  Result:       Agent chose not to trade. Factors did not align.
 ```
 
-## How It Works
+---
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -77,50 +108,68 @@ Cycle: NVDAUSDT
               ▼
 ┌─────────────────────────────────────────────────────────┐
 │              LLM Factor Proposer                         │
-│    Claude Sonnet analyzes data, proposes hypotheses      │
-│    "momentum", "mean_reversion", "volatility_breakout"   │
+│    Claude Sonnet 4.6 proposes from fixed vocabulary:     │
+│    momentum · mean_reversion · volatility_breakout       │
+│    volume_spike · ema_crossover                          │
 └─────────────┬───────────────────────────────────────────┘
               ▼
 ┌─────────────────────────────────────────────────────────┐
 │           Deterministic Validation                       │
 │    Walk-forward backtest on historical data               │
-│    Sharpe, Sortino, drawdown, win rate, turnover          │
+│    Sharpe · Sortino · drawdown · win rate · turnover     │
 └─────────────┬───────────────────────────────────────────┘
               ▼
 ┌─────────────────────────────────────────────────────────┐
 │              LLM Trade Decision                          │
 │    Selects strongest validated hypothesis                 │
-│    Chooses: long, short, or NO TRADE                     │
+│    Outputs: instrument, side, price, quantity, rationale │
 └─────────────┬───────────────────────────────────────────┘
               ▼
 ┌─────────────────────────────────────────────────────────┐
 │              Risk Gate Layer (14 gates)                   │
-│    Balance ✓  Positions ✓  Exposure ✓  Cooldown ✓        │
-│    Concentration ✓  Pending orders ✓  Daily loss ✓       │
-│    Data freshness ✓  Notional ✓  Quantity ✓  ...         │
+│    balance_check ✓  max_position ✓  exposure_cap ✓       │
+│    cooldown ✓  concentration ✓  pending_order_check ✓    │
+│    daily_loss_cap ✓  data_freshness ✓  max_notional ✓    │
+│    max_quantity ✓  duplicate ✓  validation ✓  ...         │
 └─────────────┬──────────────────────┬────────────────────┘
               │ ALL PASS             │ ANY FAIL
               ▼                      ▼
 ┌──────────────────────┐  ┌──────────────────────────────┐
 │   Bitget Demo API    │  │   Order Rejected             │
-│   Place limit order  │  │   Log reason: "positions     │
-│   --paper-trading    │  │   3 >= 3" (max_position)     │
+│   Place limit order  │  │   Log gate + reason          │
+│   --paper-trading    │  │   "positions 3 >= 3"         │
 └─────────┬────────────┘  └──────────────────────────────┘
           ▼
 ┌──────────────────────┐
 │   Verify Order       │
-│   Query order status │
-│   filled/rejected?   │
+│   Query orderStatus  │
+│   filled/cancelled?  │
 └─────────┬────────────┘
           ▼
 ┌──────────────────────┐
-│   Audit Log          │
-│   Full trace in JSONL│
+│   Audit Log (JSONL)  │
 │   + Evidence Report  │
 └──────────────────────┘
 ```
 
-## Run It Yourself
+---
+
+## Track Alignment
+
+How FactorAtlas maps to [Bitget AI Genesis S2 — Agentic Trading](https://www.bitget.com/ai-genesis) judging criteria:
+
+| Criterion | How FactorAtlas addresses it |
+|-----------|------------------------------|
+| **Paper trading metrics** (Sharpe, drawdown, win rate) | Observed from Demo execution: Sharpe 3.46, drawdown $7.11, win rate 66.7% |
+| **Decision explainability** | Every cycle logs: market data → hypothesis → validation scores → LLM rationale → gate results → order outcome |
+| **Agent architecture quality** | Typed Python modules, 312 tests, mypy clean; LLM bounded by factor vocabulary and risk gates |
+| **Risk control layer** | 14 deterministic gates; LLM cannot bypass; exchange-verified balances and positions |
+| **Autonomous loop** | `observe → propose → validate → decide → gate → execute → verify → log` — no human approval pause |
+| **Complete event→decision→execution flow** | Full JSONL audit trail with `timestamp`, `orderId`, `orderStatus`, instrument, side, price, quantity |
+
+---
+
+## Quickstart
 
 ```bash
 # Install
@@ -140,7 +189,23 @@ uv run python -m factor_atlas status
 
 # View trade history
 uv run python -m factor_atlas history
+
+# Run tests
+uv run pytest
 ```
+
+### Environment Variables (Demo mode)
+
+```bash
+BITGET_API_KEY=...
+BITGET_SECRET_KEY=...
+BITGET_PASSPHRASE=...
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=us-east-1
+```
+
+---
 
 ## Evidence Files
 
@@ -148,31 +213,52 @@ Each run produces:
 
 ```
 artifacts/paper-trading/<run-id>/
-  paper_log.jsonl       # Every order: instrument, side, price, qty, gates, status
+  paper_log.jsonl       # Every order: instrument, side, price, qty, gates, orderStatus
   audit_log.jsonl       # Full event chain: observe → propose → evaluate → decide → gate → execute
-  manifest.json         # Run metadata: timestamps, LLM model, performance metrics, config hash
+  manifest.json         # Run metadata: timestamp, LLM model, metrics, config hash
   evidence_report.html  # Visual report for judges (open in browser)
 ```
+
+Committed evidence: [`docs/evidence/`](docs/evidence/)
+
+---
 
 ## Risk Controls
 
 The agent cannot bypass risk gates. If any gate fails, the trade is rejected — the LLM has no override.
 
-| Gate | What it checks |
-|------|---------------|
-| max_position | Open positions < 3 |
-| balance_check | Sufficient balance on exchange |
-| exposure_cap | Total exposure < $50,000 |
-| max_notional | Single order < $10,000 |
-| max_quantity | Order size < 100 |
-| concentration | Max 1 position per instrument |
-| cooldown | 60s between orders on same instrument |
-| daily_loss | Daily loss < $1,000 |
-| data_freshness | Market data < 24h old |
-| pending_orders | No conflicting pending orders |
-| duplicate | No duplicate event processing |
-| validation | Hypothesis must pass walk-forward validation |
-| min_samples | Sufficient data for statistical significance |
+| Gate | What it checks | Threshold |
+|------|---------------|-----------|
+| `max_position` | Open positions count | < 3 |
+| `balance_check` | Sufficient balance on exchange | ≥ order notional |
+| `exposure_cap` | Total open exposure | < $50,000 |
+| `max_notional` | Single order size | < $10,000 |
+| `max_quantity` | Order quantity | < 1,000,000 |
+| `concentration_guard` | Positions per instrument | < 2 |
+| `cooldown` | Time between orders (same instrument) | ≥ 300s |
+| `daily_loss_cap` | Realized daily loss | < $2,000 |
+| `data_freshness` | Market data age | < 24h |
+| `pending_order_check` | No conflicting pending orders | 0 pending |
+| `duplicate_suppression` | No duplicate event processing | unique |
+| `validation_threshold` | Hypothesis must pass walk-forward | passed |
+| `min_sample_size` | Sufficient observations | ≥ 20 |
+| `factor_allowlist` | Factor in approved vocabulary | in set |
+
+---
+
+## Factor Vocabulary
+
+| Factor | Description |
+|--------|------------|
+| `momentum` | Price trend continuation based on lookback returns |
+| `mean_reversion` | Price deviation from moving average, expect revert |
+| `volatility_breakout` | ATR expansion signals directional move |
+| `volume_spike` | Abnormal volume indicates institutional activity |
+| `ema_crossover` | Short/long EMA crossover signals trend change |
+
+The LLM can only propose from this fixed set. It cannot invent factors or generate arbitrary code.
+
+---
 
 ## Safety
 
@@ -182,24 +268,31 @@ The agent cannot bypass risk gates. If any gate fails, the trade is rejected —
 - **Risk gates are authoritative.** The LLM proposes; gates decide. A veto is final.
 - **Append-only audit.** Every decision is logged and cannot be edited retroactively.
 
+---
+
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Python 3.11 |
-| LLM | Claude Sonnet 4.6 (AWS Bedrock) |
-| Exchange | Bitget Demo API via `bgc` CLI |
-| Factors | momentum, mean_reversion, volatility_breakout, volume_spike, ema_crossover |
-| Instruments | AAPL, NVDA, TSLA, META (USDT-margined stock perpetuals) |
-| Risk | 14 deterministic gates, exchange-verified |
-| Tests | 307 passing (pytest), mypy clean, ruff clean |
+| Language | Python 3.11 (`uv` managed) |
+| LLM | Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6` via AWS Bedrock) |
+| Exchange | Bitget Demo API via `bgc` CLI (`--paper-trading`) |
+| Category | `USDT-FUTURES` (stock perpetuals) |
+| Instruments | `AAPLUSDT`, `NVDAUSDT`, `TSLAUSDT`, `METAUSDT` |
+| Research data | rToken SPOT (`RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT`) |
+| Tests | 312 passing (`pytest`), `mypy` clean, `ruff` clean |
+
+---
 
 ## LLM Disclosure
 
-- **Decision maker**: Claude Sonnet 4.6 via AWS Bedrock — proposes hypotheses and selects trades
-- **Bounded**: LLM can only propose from a fixed factor vocabulary and select from validated candidates
-- **Cannot**: generate code, bypass gates, invent data, place orders directly, or access live funds
-- **Fixture mode**: fully deterministic, no LLM used — for reproducible demos without credentials
+- **Model**: Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`) via AWS Bedrock
+- **Role**: Proposes factor hypotheses and selects trades from validated candidates
+- **Bounded**: Fixed factor vocabulary, deterministic validation, 14 risk gates
+- **Cannot**: Generate code, bypass gates, invent data, place orders directly, access live funds
+- **Fixture mode**: Fully deterministic, no LLM — for reproducible demos without credentials
+
+---
 
 ## License
 
