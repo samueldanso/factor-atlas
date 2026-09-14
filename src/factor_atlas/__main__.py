@@ -5,6 +5,14 @@ from __future__ import annotations
 import argparse
 import sys
 
+# Load .env before anything else so BITGET_* and AWS_* are available
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
