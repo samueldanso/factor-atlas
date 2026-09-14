@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from factor_atlas.exchange import (
+    classify_order_status,
     query_exchange_state,
     query_order_status,
 )
@@ -178,7 +179,7 @@ class TestQueryOrderStatus:
             order = query_order_status("999")
         assert order.status == "cancelled"
 
-    def test_network_failure_returns_query_failed(self) -> None:
+    def test_network_failure_propagates_oserror(self) -> None:
         def _fail(cmd, **_kwargs):
             raise OSError("Network unreachable")
 
@@ -187,3 +188,50 @@ class TestQueryOrderStatus:
             pytest.raises(OSError),
         ):
             query_order_status("123")
+
+    def test_invalid_order_id_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid order_id"):
+            query_order_status("--malicious-flag")
+
+    def test_order_id_with_leading_dash_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid order_id"):
+            query_order_status("-1234")
+
+    def test_order_id_too_long_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Invalid order_id"):
+            query_order_status("1" * 33)
+
+
+class TestClassifyOrderStatus:
+    def test_filled(self) -> None:
+        assert classify_order_status("filled") == "verified_filled"
+
+    def test_filled_uppercase(self) -> None:
+        assert classify_order_status("FILLED") == "verified_filled"
+
+    def test_cancelled(self) -> None:
+        assert classify_order_status("cancelled") == "verified_cancelled"
+
+    def test_canceled_alternate_spelling(self) -> None:
+        assert classify_order_status("canceled") == "verified_cancelled"
+
+    def test_rejected(self) -> None:
+        assert classify_order_status("rejected") == "verified_rejected"
+
+    def test_failed_maps_to_rejected(self) -> None:
+        assert classify_order_status("failed") == "verified_rejected"
+
+    def test_partial_fill(self) -> None:
+        assert classify_order_status("partial_fill") == "verified_partial"
+
+    def test_partially_filled(self) -> None:
+        assert classify_order_status("partially_filled") == "verified_partial"
+
+    def test_partial(self) -> None:
+        assert classify_order_status("partial") == "verified_partial"
+
+    def test_unknown_returns_unverified(self) -> None:
+        assert classify_order_status("unknown_thing") == "unverified"
+
+    def test_empty_string_returns_unverified(self) -> None:
+        assert classify_order_status("") == "unverified"

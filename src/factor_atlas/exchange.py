@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 OrderVerificationStatus = Literal[
     "verified_filled",
@@ -39,7 +40,7 @@ class ExchangeOrder:
     status: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExchangeState:
     balance: Decimal = Decimal(0)
     positions: list[ExchangePosition] = field(default_factory=list)
@@ -47,7 +48,7 @@ class ExchangeState:
     queried_at: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
 
 
-def _run_bgc(args: list[str], paper_trading: bool = True) -> dict:
+def _run_bgc(args: list[str], paper_trading: bool = True) -> dict[str, Any]:
     """Run a bgc command and return parsed JSON. Raises RuntimeError on failure."""
     cmd = ["bgc"]
     if paper_trading:
@@ -125,6 +126,8 @@ def query_exchange_state(paper_trading: bool = True) -> ExchangeState:
 
 def query_order_status(order_id: str, paper_trading: bool = True) -> ExchangeOrder:
     """Query a single order's status. Note: detail action does not take --category."""
+    if not re.fullmatch(r"\d{1,32}", order_id):
+        raise ValueError(f"Invalid order_id {order_id!r}: must be 1–32 decimal digits")
     raw = _run_bgc(
         ["order", "--action", "detail", "--orderId", order_id],
         paper_trading=paper_trading,
