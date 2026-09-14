@@ -225,10 +225,12 @@ class TestCLI:
             ["run", "--mode", "fixture", "--cycles", "1", "--output", str(tmp_path)]
         )
         assert rc == 0
-        # Should have created a run directory inside tmp_path
+        # Should have created a run directory (+ logs dir) inside tmp_path
         subdirs = list(tmp_path.iterdir())
-        assert len(subdirs) == 1
-        assert (subdirs[0] / "paper_log.jsonl").exists()
+        assert len(subdirs) == 2  # run dir + logs dir
+        run_dirs = [d for d in subdirs if d.name != "logs"]
+        assert len(run_dirs) == 1
+        assert (run_dirs[0] / "paper_log.jsonl").exists()
 
     def test_demo_mode_exits_cleanly_on_bgc_failure(self, tmp_path: Path) -> None:
         """Demo mode returns exit code 1 (not an unhandled exception) when bgc fails."""

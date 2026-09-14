@@ -25,6 +25,7 @@ from factor_atlas.config import (
     RESEARCH_TO_EXECUTION,
 )
 from factor_atlas.contracts import MarketSnapshot
+from factor_atlas.evidence import EvidenceLogger
 from factor_atlas.fixtures import ACCEPTED_SNAPSHOT, RAAPLUSDT_OHLCV, REJECTED_SNAPSHOT
 from factor_atlas.llm import (
     BedrockProvider,
@@ -813,6 +814,10 @@ def run_paper_session(
     audit_path = run_dir / "audit_log.jsonl"
     audit_logger = AuditLogger(output_path=audit_path)
 
+    # Evidence logger (append-only structured logs)
+    logs_dir = (output_dir or _DEFAULT_OUTPUT_DIR) / "logs"
+    evidence = EvidenceLogger(logs_dir=logs_dir, run_id=run_id)
+
     state_path = (output_dir or _DEFAULT_OUTPUT_DIR) / "positions_state.json"
 
     if mode == "demo":
@@ -869,6 +874,12 @@ def run_paper_session(
     proposer = LLMProposer(llm_provider)
     decision_provider = LLMDecisionProvider(llm_provider)
 
+    evidence.log_run_start(
+        mode=mode,
+        interval=0,
+        llm_model=llm_info.get("llm_model", "unknown"),
+    )
+
     # Write paper log — open file here so exit processor can append close records
     paper_log_path = run_dir / "paper_log.jsonl"
 
@@ -903,6 +914,77 @@ def run_paper_session(
         for result in results:
             _print_cycle_summary(result)
 
+            # --- Evidence logging per cycle ---
+            instrument = result.snapshot.instrument
+
+            # Build hypothesis / validation dicts for the best candidate
+            hyp_dict: dict[str, Any] | None = None
+            val_dict: dict[str, Any] | None = None
+            if result.validated:
+                hyp, val = result.validated[0]
+                hyp_dict = {
+                    "factor_name": hyp.factor_name,
+                    "parameters": hyp.parameters,
+                    "direction": hyp.direction,
+                    "rationale": hyp.rationale,
+                }
+                val_dict = {
+                    "sharpe": val.metrics.sharpe_ratio.value,
+                    "max_drawdown": val.metrics.max_drawdown.value,
+                    "passed": val.passed,
+                    "observations": val.observations,
+                }
+
+            evidence.log_event(
+                cycle_id=result.cycle_id,
+                instrument=instrument,
+                price=str(result.snapshot.close),
+                source=result.snapshot.source,
+                hypothesis=hyp_dict,
+                validation=val_dict,
+            )
+
+            # Decision
+            if result.decision is not None:
+                d = result.decision
+                evidence.log_decision(
+                    cycle_id=result.cycle_id,
+                    instrument=instrument,
+                    selected_hypothesis=d.hypothesis_id,
+                    side=d.side,
+                    quantity=str(d.quantity),
+                    price=str(d.price),
+                    rationale=d.rationale,
+                )
+            else:
+                evidence.log_decision(
+                    cycle_id=result.cycle_id,
+                    instrument=instrument,
+                    selected_hypothesis=None,
+                    side=None,
+                    quantity=None,
+                    price=None,
+                    rationale=result.status,
+                )
+
+            # Risk gates
+            if result.gate_results is not None:
+                gates_list = [
+                    {
+                        "gate_name": g.gate_name,
+                        "passed": g.passed,
+                        "reason": g.reason,
+                    }
+                    for g in result.gate_results
+                ]
+                all_passed = all(g.passed for g in result.gate_results)
+                evidence.log_risk(
+                    cycle_id=result.cycle_id,
+                    instrument=instrument,
+                    gates=gates_list,
+                    verdict="all_passed" if all_passed else "blocked",
+                )
+
         # Register newly opened positions
         _register_open_positions(results, broker_state)
 
@@ -927,6 +1009,16 @@ def run_paper_session(
                         )
                         bgc_order_ids[result.cycle_id] = str(order_id)
                         print(f"  Entry {exec_sym} {d.side} → orderId={order_id}")
+                        evidence.log_trade(
+                            cycle_id=result.cycle_id,
+                            record_type="entry",
+                            instrument=exec_sym,
+                            side=d.side,
+                            price=str(d.price),
+                            size=str(d.quantity),
+                            order_id=str(order_id),
+                            status="filled",
+                        )
                     except (RuntimeError, json.JSONDecodeError) as e:
                         print(
                             f"  Entry order failed for {exec_sym}: {e}", file=sys.stderr
@@ -1018,6 +1110,12 @@ def run_paper_session(
         )
     print(f"  Output: {run_dir}")
     print(f"{'=' * 60}")
+
+    evidence.log_run_end(
+        cycles=len(results),
+        accepted=manifest["accepted_count"],
+        skipped=manifest["rejected_count"],
+    )
 
     return run_dir
 
