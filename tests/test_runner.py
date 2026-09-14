@@ -253,6 +253,65 @@ class TestDemoLLMFailure:
         assert rc == 1
 
 
+class TestPerpPriceFetching:
+    """_fetch_perp_prices fetches USDT-FUTURES close prices via bgc."""
+
+    def test_fetch_perp_prices_returns_decimals(self) -> None:
+        import json
+        from decimal import Decimal
+        from unittest.mock import patch
+
+        candle_resp = json.dumps(
+            {
+                "data": [
+                    [
+                        1694649600000,
+                        "330.00",
+                        "335.00",
+                        "328.00",
+                        "332.50",
+                        "1000",
+                        "332500",
+                    ]
+                ]
+            }
+        )
+
+        def _mock_run(cmd, **_kw):
+            class R:
+                returncode = 0
+                stdout = candle_resp
+                stderr = ""
+
+            return R()
+
+        with patch("factor_atlas.runner.subprocess.run", side_effect=_mock_run):
+            from factor_atlas.runner import _fetch_perp_prices
+
+            prices = _fetch_perp_prices(["AAPLUSDT"])
+
+        assert prices["AAPLUSDT"] == Decimal("332.50")
+
+    def test_fetch_perp_prices_skips_failed_symbol(self) -> None:
+        """If bgc returns non-zero for a symbol, it is skipped without crashing."""
+        from unittest.mock import patch
+
+        def _mock_run(cmd, **_kw):
+            class R:
+                returncode = 1
+                stdout = ""
+                stderr = "error"
+
+            return R()
+
+        with patch("factor_atlas.runner.subprocess.run", side_effect=_mock_run):
+            from factor_atlas.runner import _fetch_perp_prices
+
+            prices = _fetch_perp_prices(["AAPLUSDT"])
+
+        assert prices == {}
+
+
 class TestManifestLLMFields:
     """Manifest contains required LLM provenance fields."""
 

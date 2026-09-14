@@ -345,6 +345,44 @@ def _fetch_candles_bgc(
     return pd.DataFrame(records)
 
 
+def _fetch_perp_prices(instruments: list[str]) -> dict[str, Decimal]:
+    """Fetch the latest USDT-FUTURES close price for each perp instrument.
+
+    Returns a dict keyed by execution symbol (e.g. ``AAPLUSDT``).
+    Symbols whose bgc call fails are silently skipped so one bad instrument
+    does not abort the entire exit check.
+    """
+    prices: dict[str, Decimal] = {}
+    for symbol in instruments:
+        cmd = [
+            "bgc",
+            "market",
+            "--action",
+            "candles",
+            "--category",
+            "USDT-FUTURES",
+            "--symbol",
+            symbol,
+            "--interval",
+            "1D",
+            "--limit",
+            "1",
+        ]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=30, check=False
+        )
+        if result.returncode != 0:
+            continue
+        try:
+            raw = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            continue
+        candles = raw.get("data", [])
+        if candles:
+            prices[symbol] = Decimal(str(candles[-1][4]))
+    return prices
+
+
 def _place_order_bgc(
     exec_symbol: str,
     side: str,
@@ -598,20 +636,24 @@ def _build_close_record(
 
 def _process_demo_exits(
     broker_state: BrokerState,
-    ohlcv_data: dict[str, pd.DataFrame],
+    perp_prices: dict[str, Decimal],
     risk_config: RiskConfig,
     config_hash: str,
     paper_log_f: Any,
 ) -> None:
-    """Check open positions for exit conditions and close them via bgc."""
+    """Check open positions for exit conditions and close them via bgc.
+
+    Uses USDT-FUTURES perp prices (keyed by execution symbol) for exit
+    evaluation — not SPOT rToken research prices.
+    """
     now = datetime.now(tz=UTC)
     to_close: list[str] = []
 
     for instrument, pos in broker_state.open_positions.items():
-        df = ohlcv_data.get(instrument)
-        if df is None or df.empty:
+        exec_sym = RESEARCH_TO_EXECUTION.get(instrument, instrument)
+        current_price = perp_prices.get(exec_sym)
+        if current_price is None:
             continue
-        current_price = Decimal(str(df.iloc[-1]["close"]))
         should_exit, reason = _should_exit(pos, current_price, now, risk_config)
         if should_exit:
             to_close.append(instrument)
@@ -619,7 +661,6 @@ def _process_demo_exits(
             broker_state.closed_trades.append(closed)
             broker_state.daily_pnl += closed.pnl
 
-            exec_sym = RESEARCH_TO_EXECUTION.get(instrument, instrument)
             close_side = "sell" if pos.side == "buy" else "buy"
             bgc_close_id: str | None = None
             try:
@@ -742,8 +783,15 @@ def run_paper_session(
     with paper_log_path.open("a") as paper_log_f:
         # Demo: process exits from prior runs before opening new positions
         if mode == "demo" and broker_state.open_positions:
+            exec_symbols = list(
+                {
+                    RESEARCH_TO_EXECUTION.get(sym, sym)
+                    for sym in broker_state.open_positions
+                }
+            )
+            perp_prices = _fetch_perp_prices(exec_symbols)
             _process_demo_exits(
-                broker_state, ohlcv_data, risk_config, config_hash, paper_log_f
+                broker_state, perp_prices, risk_config, config_hash, paper_log_f
             )
 
         results = run_cycles(
