@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from factor_atlas.broker import BrokerState
+from factor_atlas.broker import BrokerState, OpenPosition
 from factor_atlas.contracts import (
     LabeledMetric,
     MarketSnapshot,
@@ -267,6 +267,42 @@ class TestMaxPosition:
         d = _make_decision()
         state = _fresh_state()
         state.positions = [_make_order(), _make_order(), _make_order()]
+        r = gate_max_position(d, broker_state=state, config=RiskConfig())
+        assert r.passed is False
+
+    def test_fail_with_open_positions_at_limit(self) -> None:
+        d = _make_decision()
+        state = _fresh_state()
+        now = datetime.now(tz=UTC)
+        for i, sym in enumerate(["AAPLUSDT", "NVDAUSDT", "TSLAUSDT"]):
+            state.open_positions[sym] = OpenPosition(
+                instrument=sym,
+                side="buy",
+                entry_price=Decimal(100),
+                quantity=Decimal(1),
+                entry_time=now,
+                hypothesis_id=f"h{i}",
+                factor_name="momentum",
+                cycle_id=f"c{i}",
+            )
+        r = gate_max_position(d, broker_state=state, config=RiskConfig())
+        assert r.passed is False
+
+    def test_fail_mixed_positions_and_open_positions(self) -> None:
+        d = _make_decision()
+        state = _fresh_state()
+        state.positions = [_make_order(), _make_order()]
+        now = datetime.now(tz=UTC)
+        state.open_positions["AAPLUSDT"] = OpenPosition(
+            instrument="AAPLUSDT",
+            side="buy",
+            entry_price=Decimal(100),
+            quantity=Decimal(1),
+            entry_time=now,
+            hypothesis_id="h0",
+            factor_name="momentum",
+            cycle_id="c0",
+        )
         r = gate_max_position(d, broker_state=state, config=RiskConfig())
         assert r.passed is False
 

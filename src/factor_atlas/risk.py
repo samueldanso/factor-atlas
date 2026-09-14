@@ -167,7 +167,7 @@ def gate_max_position(
     **_kw: object,
 ) -> RiskGateResult:
     """Reject if open positions would exceed MAX_CONCURRENT_POSITIONS."""
-    current = len(broker_state.positions)
+    current = len(broker_state.positions) + len(broker_state.open_positions)
     passed = current < config.max_concurrent_positions
     return RiskGateResult(
         gate_name="max_position",

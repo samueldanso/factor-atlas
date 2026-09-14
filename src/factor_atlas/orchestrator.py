@@ -47,7 +47,7 @@ class CycleResult:
     evaluations: list[tuple[FactorHypothesis, ValidationResult]]
     validated: list[tuple[FactorHypothesis, ValidationResult]]
     decision: TradeDecision | None
-    status: Literal["accepted", "no_candidate", "no_hypothesis"]
+    status: Literal["accepted", "rejected", "no_candidate", "no_hypothesis"]
     gate_results: list[RiskGateResult] | None = None
     order: PaperOrder | None = None
 
@@ -177,7 +177,13 @@ def run_cycle(
         evaluations=evaluations,
         validated=validated,
         decision=decision,
-        status="accepted" if decision is not None else "no_candidate",
+        status=(
+            "accepted"
+            if decision is not None and (order is None or order.status == "filled")
+            else "no_candidate"
+            if decision is None
+            else "rejected"
+        ),
         gate_results=gate_results,
         order=order,
     )

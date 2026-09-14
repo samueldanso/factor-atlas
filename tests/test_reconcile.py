@@ -105,3 +105,23 @@ class TestReconcilePositions:
         assert len(divergences) == 1
         assert divergences[0].kind == "size_mismatch"
         assert broker.open_positions["AAPLUSDT"].quantity == Decimal(2)
+
+    def test_research_symbol_matches_execution_symbol(self) -> None:
+        """RAAPLUSDT local position should match AAPLUSDT exchange position."""
+        broker = BrokerState()
+        broker.open_positions["RAAPLUSDT"] = _make_open_position("RAAPLUSDT")
+
+        ex_state = _make_exchange_state(
+            [
+                ExchangePosition(
+                    symbol="AAPLUSDT",
+                    side="long",
+                    size=Decimal(2),
+                    entry_price=Decimal("330.33"),
+                    unrealized_pnl=Decimal(0),
+                )
+            ]
+        )
+        divergences = reconcile_positions(broker, ex_state)
+        assert divergences == []
+        assert "RAAPLUSDT" in broker.open_positions
