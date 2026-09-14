@@ -261,6 +261,7 @@ def _build_manifest(
     config_hash: str,
     commit: str,
     closed_trades: list[ClosedTrade] | None = None,
+    llm_info: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build the run manifest dict."""
     accepted = sum(1 for r in results if r.status == "accepted")
@@ -283,6 +284,9 @@ def _build_manifest(
         "config_hash": config_hash,
         "software_version": SOFTWARE_VERSION,
         "performance_metrics": compute_metrics(closed_trades or []),
+        "llm_provider": (llm_info or {}).get("llm_provider", "unknown"),
+        "llm_model": (llm_info or {}).get("llm_model", "unknown"),
+        "llm_mode": (llm_info or {}).get("llm_mode", "unknown"),
     }
     return manifest
 
@@ -464,7 +468,9 @@ def _save_positions_state(
     state_path.write_text(
         json.dumps(
             {
-                "open_positions": [p.to_dict() for p in broker_state.open_positions.values()],
+                "open_positions": [
+                    p.to_dict() for p in broker_state.open_positions.values()
+                ],
                 "closed_trades": [t.to_dict() for t in broker_state.closed_trades],
                 "last_updated": datetime.now(tz=UTC).isoformat(),
             },
@@ -617,9 +623,13 @@ def _process_demo_exits(
             close_side = "sell" if pos.side == "buy" else "buy"
             bgc_close_id: str | None = None
             try:
-                resp = _place_order_bgc(exec_sym, close_side, current_price, pos.quantity)
+                resp = _place_order_bgc(
+                    exec_sym, close_side, current_price, pos.quantity
+                )
                 bgc_close_id = (
-                    str(resp.get("data", {}).get("orderId") or resp.get("orderId") or "")
+                    str(
+                        resp.get("data", {}).get("orderId") or resp.get("orderId") or ""
+                    )
                     or None
                 )
                 print(f"  Exit {instrument} ({reason}): orderId={bgc_close_id}")
@@ -708,18 +718,20 @@ def run_paper_session(
         _load_positions_state(broker_state, state_path)
 
     if mode == "demo":
-        try:
-            llm_provider = BedrockProvider()
-            print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
-        except (ImportError, RuntimeError, OSError) as e:
-            print(
-                f"  Warning: BedrockProvider init failed ({e}). "
-                "Falling back to FixtureLLMProvider.",
-                file=sys.stderr,
-            )
-            llm_provider = FixtureLLMProvider()  # type: ignore[assignment]
+        llm_provider = BedrockProvider()
+        print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
+        llm_info: dict[str, str] = {
+            "llm_provider": "aws-bedrock",
+            "llm_model": llm_provider.model_name,
+            "llm_mode": "live",
+        }
     else:
         llm_provider = FixtureLLMProvider()  # type: ignore[assignment]
+        llm_info = {
+            "llm_provider": "fixture",
+            "llm_model": "fixture",
+            "llm_mode": "fixture",
+        }
 
     proposer = LLMProposer(llm_provider)
     decision_provider = LLMDecisionProvider(llm_provider)
@@ -771,7 +783,9 @@ def run_paper_session(
                         bgc_order_ids[result.cycle_id] = str(order_id)
                         print(f"  Entry {exec_sym} {d.side} → orderId={order_id}")
                     except (RuntimeError, json.JSONDecodeError) as e:
-                        print(f"  Entry order failed for {exec_sym}: {e}", file=sys.stderr)
+                        print(
+                            f"  Entry order failed for {exec_sym}: {e}", file=sys.stderr
+                        )
                         bgc_order_ids[result.cycle_id] = f"error:{e}"
 
         # Fixture: close positions synthetically for metrics (in-memory only)
@@ -799,6 +813,7 @@ def run_paper_session(
         config_hash=config_hash,
         commit=commit,
         closed_trades=broker_state.closed_trades,
+        llm_info=llm_info,
     )
     manifest_path = run_dir / "manifest.json"
     with manifest_path.open("w") as f:

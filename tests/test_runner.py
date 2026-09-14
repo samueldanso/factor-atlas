@@ -203,10 +203,63 @@ class TestCLI:
         assert len(subdirs) == 1
         assert (subdirs[0] / "paper_log.jsonl").exists()
 
-    def test_demo_mode_exits_cleanly(self, tmp_path: Path) -> None:
-        # Demo mode calls bgc live; it should exit 0 (success) or 1 (bgc error),
-        # but never crash with an unhandled exception.
+    def test_demo_mode_exits_cleanly_on_bgc_failure(self, tmp_path: Path) -> None:
+        """Demo mode returns exit code 1 (not an unhandled exception) when bgc fails."""
+        from unittest.mock import patch
+
         from factor_atlas.__main__ import main
 
-        rc = main(["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)])
-        assert rc in (0, 1)
+        with patch(
+            "factor_atlas.runner.subprocess.run",
+            side_effect=RuntimeError("bgc candle retrieval failed"),
+        ):
+            rc = main(
+                ["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)]
+            )
+        assert rc == 1
+
+    def test_demo_mode_exits_cleanly_on_network_error(self, tmp_path: Path) -> None:
+        """Demo mode returns exit code 1 (not an unhandled exception) on network errors."""
+        from unittest.mock import patch
+
+        from factor_atlas.__main__ import main
+
+        with patch(
+            "factor_atlas.runner.subprocess.run",
+            side_effect=OSError("Network is unreachable"),
+        ):
+            rc = main(
+                ["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)]
+            )
+        assert rc == 1
+
+
+class TestDemoLLMFailure:
+    """Demo mode must not silently fall back to fixture LLM."""
+
+    def test_demo_mode_raises_when_bedrock_fails(self, tmp_path: Path) -> None:
+        """Demo mode must fail loudly when BedrockProvider init fails."""
+        from unittest.mock import patch
+
+        from factor_atlas.__main__ import main
+
+        with patch(
+            "factor_atlas.runner.BedrockProvider",
+            side_effect=RuntimeError("Bedrock unavailable"),
+        ):
+            rc = main(
+                ["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)]
+            )
+        assert rc == 1
+
+
+class TestManifestLLMFields:
+    """Manifest contains required LLM provenance fields."""
+
+    def test_manifest_contains_llm_fields(self, tmp_path: Path) -> None:
+        """Fixture mode manifest has llm_provider, llm_model, llm_mode fields."""
+        run_dir = run_paper_session(mode="fixture", cycles=1, output_dir=tmp_path)
+        manifest = json.loads((run_dir / "manifest.json").read_text())
+        assert manifest["llm_provider"] == "fixture"
+        assert manifest["llm_model"] == "fixture"
+        assert manifest["llm_mode"] == "fixture"
