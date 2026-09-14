@@ -81,10 +81,10 @@ def _make_artifacts(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "record_type": "open",
-                "instrument": "AAPLUSDT",
-                "category": "USDT-FUTURES",
+                "symbol": "AAPLUSDT",
+                "productType": "USDT-FUTURES",
                 "side": "buy",
-                "status": "filled",
+                "orderStatus": "filled",
                 "factor_name": "momentum",
                 "rationale": "Strong momentum signal",
                 "risk_gate_results": [

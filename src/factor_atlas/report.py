@@ -34,9 +34,15 @@ def _fmt_dec(val: str | float | None, places: int = 2) -> str:
 
 def _status_class(status: str) -> str:
     s = status.lower()
-    if s in ("filled", "closed", "accepted", "verified_filled"):
+    if s in ("filled", "closed", "accepted", "verified_filled", "live"):
         return "success"
-    if s in ("rejected", "failed", "verified_rejected", "verified_cancelled"):
+    if s in (
+        "rejected",
+        "failed",
+        "verified_rejected",
+        "verified_cancelled",
+        "cancelled",
+    ):
         return "danger"
     if s in ("no_candidate", "no_hypothesis", "skipped"):
         return "muted"
@@ -54,16 +60,17 @@ def _build_cycle_html(
     record: dict[str, Any],
     audit_by_cycle: dict[str, list[dict[str, Any]]],
 ) -> str:
-    inst = escape(record.get("instrument", "—"))
-    status = record.get("status", "unknown")
+    inst = escape(record.get("symbol", record.get("instrument", "—")))
+    status = record.get("orderStatus", record.get("status", "unknown"))
     cls = _status_class(status)
     side = record.get("side") or "—"
     price = _fmt_dec(record.get("price"))
-    qty = _fmt_dec(record.get("quantity"), 0)
+    qty = _fmt_dec(record.get("size", record.get("quantity")), 0)
+    product_type = record.get("productType", record.get("category", "—"))
     factor = escape(record.get("factor_name") or "—")
     rationale = escape(record.get("rationale") or "—")
     sharpe = _fmt_dec(record.get("validation_sharpe"), 4)
-    bgc_id = record.get("bgc_order_id") or "—"
+    order_id = record.get("orderId", record.get("bgc_order_id")) or "—"
     verification = record.get("verification_status") or "—"
     cycle_id = record.get("cycle_id", "")
 
@@ -149,17 +156,18 @@ def _build_cycle_html(
     <div class="cycle-card">
         <div class="cycle-header">
             <span class="instrument">{inst}</span>
-            <span class="badge {cls}">{escape(status.upper())}</span>
+            <span class="badge {cls}">orderStatus: {escape(status.upper())}</span>
             <span class="{side_cls}">{escape(side.upper()) if side != "—" else "—"}</span>
             <span class="factor-tag">{factor}</span>
         </div>
         <div class="cycle-body">
             <div class="cycle-meta">
-                <div><strong>Price:</strong> ${price}</div>
-                <div><strong>Qty:</strong> {qty}</div>
+                <div><strong>productType:</strong> {escape(str(product_type))}</div>
+                <div><strong>price:</strong> ${price}</div>
+                <div><strong>size:</strong> {qty}</div>
                 <div><strong>Sharpe:</strong> {sharpe}</div>
-                <div><strong>Bitget Order:</strong> <code>{escape(str(bgc_id))}</code></div>
-                <div><strong>Verification:</strong> <span class="badge {_status_class(verification)}">{escape(str(verification))}</span></div>
+                <div><strong>orderId:</strong> <code>{escape(str(order_id))}</code></div>
+                <div><strong>verification:</strong> <span class="badge {_status_class(verification)}">{escape(str(verification))}</span></div>
             </div>
             {f'<div class="rationale"><strong>LLM Rationale:</strong> {rationale}</div>' if rationale != "—" else ""}
             {gates_html}
@@ -169,16 +177,16 @@ def _build_cycle_html(
 
 
 def _build_close_html(record: dict[str, Any]) -> str:
-    inst = escape(record.get("instrument", "—"))
-    entry = _fmt_dec(record.get("entry_price"))
-    exit_p = _fmt_dec(record.get("exit_price"))
+    inst = escape(record.get("symbol", record.get("instrument", "—")))
+    entry = _fmt_dec(record.get("entryPrice", record.get("entry_price")))
+    exit_p = _fmt_dec(record.get("exitPrice", record.get("exit_price")))
     pnl = record.get("pnl", "0")
     pnl_pct = record.get("pnl_pct", 0)
     won = record.get("won", False)
     hold = _fmt_dec(record.get("hold_duration_hours"), 1)
     factor = escape(record.get("factor_name") or "—")
     reason = escape(record.get("rationale") or "—")
-    bgc_id = record.get("bgc_order_id") or "—"
+    order_id = record.get("orderId", record.get("bgc_order_id")) or "—"
     cls = "success" if won else "danger"
     side = record.get("side") or "—"
 
@@ -192,11 +200,11 @@ def _build_close_html(record: dict[str, Any]) -> str:
         </div>
         <div class="trade-body">
             <div class="trade-meta">
-                <div><strong>Entry:</strong> ${entry}</div>
-                <div><strong>Exit:</strong> ${exit_p}</div>
+                <div><strong>entryPrice:</strong> ${entry}</div>
+                <div><strong>exitPrice:</strong> ${exit_p}</div>
                 <div><strong>PnL:</strong> <span class="{cls}">${_fmt_dec(pnl)}</span> ({_fmt_pct(pnl_pct)})</div>
-                <div><strong>Hold:</strong> {hold}h</div>
-                <div><strong>Close Order:</strong> <code>{escape(str(bgc_id))}</code></div>
+                <div><strong>hold:</strong> {hold}h</div>
+                <div><strong>orderId:</strong> <code>{escape(str(order_id))}</code></div>
             </div>
             <div class="rationale">{reason}</div>
         </div>
@@ -355,6 +363,7 @@ def generate_report(run_dir: Path) -> str:
     avg_hold = perf.get("avg_hold_hours", 0)
     equity_curve = perf.get("equity_curve", [])
 
+    research_instruments = manifest.get("instruments", [])
     exec_instruments = manifest.get("execution_instruments", [])
 
     # Build sections
@@ -380,9 +389,9 @@ def generate_report(run_dir: Path) -> str:
 </div>
 
 <div class="agent-flow">
-    <h3>Agent Flow (each cycle)</h3>
+    <h3>Agent Flow (each cycle) — rToken SPOT research → USDT-FUTURES perp execution</h3>
     <div class="flow-steps">
-        <span class="flow-step">Market Data</span>
+        <span class="flow-step">rToken SPOT Data<br><small>RAAPLUSDT, RNVDAUSDT…</small></span>
         <span class="flow-arrow">→</span>
         <span class="flow-step">LLM Hypotheses</span>
         <span class="flow-arrow">→</span>
@@ -392,9 +401,9 @@ def generate_report(run_dir: Path) -> str:
         <span class="flow-arrow">→</span>
         <span class="flow-step">14 Risk Gates</span>
         <span class="flow-arrow">→</span>
-        <span class="flow-step">Demo Order</span>
+        <span class="flow-step">Stock Perp Order<br><small>AAPLUSDT (USDT-FUTURES)</small></span>
         <span class="flow-arrow">→</span>
-        <span class="flow-step">Verify Fill</span>
+        <span class="flow-step">Verify orderStatus</span>
     </div>
 </div>
 
@@ -416,7 +425,8 @@ def generate_report(run_dir: Path) -> str:
 <div class="cycle-meta" style="font-size:0.85rem; margin-bottom:24px;">
     <div><strong>Mode:</strong> {escape(mode)} | <strong>LLM:</strong> {escape(llm_model)} ({escape(llm_provider)})</div>
     <div><strong>Time:</strong> {escape(start)} → {escape(end)}</div>
-    <div><strong>Instruments:</strong> {", ".join(escape(i) for i in exec_instruments)}</div>
+    <div><strong>Research (rToken SPOT):</strong> {", ".join(escape(i) for i in research_instruments)}</div>
+    <div><strong>Execution (USDT-FUTURES):</strong> {", ".join(escape(i) for i in exec_instruments)}</div>
     <div><strong>Commit:</strong> <code>{escape(commit)}</code> | <strong>Config:</strong> <code>{escape(config_hash)}</code></div>
 </div>
 

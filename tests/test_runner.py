@@ -74,12 +74,12 @@ class TestRunPaperSession:
             record = json.loads(line)
             # All required fields present
             assert "timestamp" in record
-            assert "instrument" in record
-            assert "category" in record
+            assert "symbol" in record
+            assert "productType" in record
             assert "side" in record or record["side"] is None
             assert "price" in record
-            assert "quantity" in record
-            assert "status" in record
+            assert "size" in record
+            assert "orderStatus" in record
             assert "cycle_id" in record
             assert "factor_name" in record
             assert "risk_gate_results" in record
@@ -93,15 +93,15 @@ class TestRunPaperSession:
         lines = paper_log.read_text().strip().split("\n")
         for line in lines:
             record = json.loads(line)
-            instrument = record["instrument"]
+            symbol = record["symbol"]
             # Must be execution instrument or at least normalized
             # RAAPLUSDT -> AAPLUSDT, RNVDAUSDT -> NVDAUSDT
-            assert not instrument.startswith("R") or instrument not in (
+            assert not symbol.startswith("R") or symbol not in (
                 "RAAPLUSDT",
                 "RNVDAUSDT",
                 "RTSLAUSDT",
                 "RMETAUSDT",
-            ), f"Paper log should use execution instrument, got {instrument}"
+            ), f"Paper log should use execution symbol, got {symbol}"
 
     def test_paper_log_category_usdt_futures(self, tmp_path: Path) -> None:
         """Paper log records use USDT-FUTURES category."""
@@ -110,7 +110,7 @@ class TestRunPaperSession:
         lines = paper_log.read_text().strip().split("\n")
         for line in lines:
             record = json.loads(line)
-            assert record["category"] == "USDT-FUTURES"
+            assert record["productType"] == "USDT-FUTURES"
 
     def test_manifest_fields(self, tmp_path: Path) -> None:
         run_dir = run_paper_session(mode="fixture", cycles=2, output_dir=tmp_path)
@@ -152,7 +152,7 @@ class TestRunPaperSession:
         run_dir = run_paper_session(mode="fixture", cycles=2, output_dir=tmp_path)
         paper_log = run_dir / "paper_log.jsonl"
         lines = paper_log.read_text().strip().split("\n")
-        statuses = [json.loads(line)["status"] for line in lines]
+        statuses = [json.loads(line)["orderStatus"] for line in lines]
         # At least one cycle that isn't 'no_candidate' / 'no_hypothesis'
         # (the ACCEPTED_SNAPSHOT produces a fill or accepted, REJECTED has no OHLCV)
         assert len(statuses) == 2

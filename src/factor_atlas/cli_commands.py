@@ -143,14 +143,14 @@ def cmd_explain(run_id: str, artifacts_dir: Path) -> str:
             except json.JSONDecodeError:
                 continue
 
-            inst = record.get("instrument", "unknown")
-            status = record.get("status", "unknown")
+            inst = record.get("symbol", record.get("instrument", "unknown"))
+            status = record.get("orderStatus", record.get("status", "unknown"))
             factor = record.get("factor_name", "")
             rationale = record.get("rationale", "")
             side = record.get("side", "")
 
             lines.append(f"  {inst}:")
-            lines.append(f"    Status: {status}, Side: {side}, Factor: {factor}")
+            lines.append(f"    orderStatus: {status}, side: {side}, factor: {factor}")
             if rationale:
                 lines.append(f"    Rationale: {rationale[:120]}")
 

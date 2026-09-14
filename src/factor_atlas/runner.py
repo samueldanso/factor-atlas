@@ -138,22 +138,22 @@ def _build_paper_record(
     if order is not None:
         return {
             "record_type": "open",
-            "order_id": order.order_id,
+            "internal_order_id": order.order_id,
             "decision_id": order.decision_id,
             "event_id": order.event_id,
             "timestamp": order.timestamp.isoformat(),
-            "instrument": exec_instrument,
-            "category": CATEGORY,
+            "symbol": exec_instrument,
+            "productType": CATEGORY,
             "side": order.side,
             "price": str(order.price),
-            "quantity": str(order.quantity),
+            "size": str(order.quantity),
             "notional": str(order.notional),
             "pre_balance": str(order.pre_balance),
             "post_balance": str(order.post_balance),
             "fees": str(order.fees),
             "slippage": str(order.slippage),
-            "status": order.status,
-            "fill_price": str(order.fill_price) if order.fill_price else None,
+            "orderStatus": order.status,
+            "fillPrice": str(order.fill_price) if order.fill_price else None,
             "rejection_reason": order.rejection_reason,
             "cycle_id": cycle_result.cycle_id,
             "hypothesis_id": hypothesis_id,
@@ -168,22 +168,22 @@ def _build_paper_record(
     # No order (no_candidate / no_hypothesis)
     return {
         "record_type": "open",
-        "order_id": None,
+        "internal_order_id": None,
         "decision_id": decision.decision_id if decision else None,
         "event_id": None,
         "timestamp": cycle_result.snapshot.timestamp.isoformat(),
-        "instrument": exec_instrument,
-        "category": CATEGORY,
+        "symbol": exec_instrument,
+        "productType": CATEGORY,
         "side": decision.side if decision else None,
         "price": str(cycle_result.snapshot.close),
-        "quantity": "0",
+        "size": "0",
         "notional": "0",
         "pre_balance": None,
         "post_balance": None,
         "fees": "0",
         "slippage": "0",
-        "status": cycle_result.status,
-        "fill_price": None,
+        "orderStatus": cycle_result.status,
+        "fillPrice": None,
         "rejection_reason": cycle_result.status,
         "cycle_id": cycle_result.cycle_id,
         "hypothesis_id": hypothesis_id,
@@ -594,22 +594,22 @@ def _build_close_record(
     close_side = "sell" if closed_trade.side == "buy" else "buy"
     record: dict[str, Any] = {
         "record_type": "close",
-        "order_id": None,
+        "internal_order_id": None,
         "decision_id": None,
         "event_id": None,
         "timestamp": closed_trade.exit_time.isoformat(),
-        "instrument": exec_instrument,
-        "category": CATEGORY,
+        "symbol": exec_instrument,
+        "productType": CATEGORY,
         "side": close_side,
         "price": str(closed_trade.exit_price),
-        "quantity": str(closed_trade.quantity),
+        "size": str(closed_trade.quantity),
         "notional": str(closed_trade.exit_price * closed_trade.quantity),
         "pre_balance": None,
         "post_balance": None,
         "fees": "0",
         "slippage": "0",
-        "status": "closed",
-        "fill_price": str(closed_trade.exit_price),
+        "orderStatus": "closed",
+        "fillPrice": str(closed_trade.exit_price),
         "rejection_reason": None,
         "cycle_id": "",
         "hypothesis_id": "",
@@ -618,8 +618,8 @@ def _build_close_record(
         "validation_sharpe": None,
         "rationale": f"exit: pnl={closed_trade.pnl} ({closed_trade.pnl_pct:.2%}), "
         f"hold={closed_trade.hold_duration_hours:.1f}h",
-        "entry_price": str(closed_trade.entry_price),
-        "exit_price": str(closed_trade.exit_price),
+        "entryPrice": str(closed_trade.entry_price),
+        "exitPrice": str(closed_trade.exit_price),
         "pnl": str(closed_trade.pnl),
         "pnl_pct": closed_trade.pnl_pct,
         "won": closed_trade.won,
@@ -628,7 +628,7 @@ def _build_close_record(
         "config_hash": config_hash,
     }
     if bgc_close_order_id:
-        record["bgc_order_id"] = bgc_close_order_id
+        record["orderId"] = bgc_close_order_id
     return record
 
 
@@ -725,7 +725,7 @@ def _print_cycle_summary(result: CycleResult) -> None:
     if not result.hypotheses:
         print("  Hypothesis: none — LLM found no factor with sufficient evidence")
         print("  Decision: NO TRADE")
-        print(f"  Status: {result.status}")
+        print(f"  orderStatus: {result.status}")
         return
 
     if result.validated:
@@ -738,11 +738,11 @@ def _print_cycle_summary(result: CycleResult) -> None:
 
     if result.decision is None:
         print("  Decision: NO TRADE — no validated hypothesis selected")
-        print(f"  Status: {result.status}")
+        print(f"  orderStatus: {result.status}")
         return
 
     d = result.decision
-    print(f"  Decision: {d.side.upper()} {exec_sym} @ ${d.price} qty {d.quantity}")
+    print(f"  Decision: {d.side.upper()} {exec_sym} @ ${d.price} size {d.quantity}")
     print(f'  Rationale: "{d.rationale[:100]}"')
 
     if result.gate_results:
@@ -754,9 +754,9 @@ def _print_cycle_summary(result: CycleResult) -> None:
             print(f"  Gates: {passed}/{len(result.gate_results)} passed")
 
     if result.order:
-        print(f"  Order: {result.order.status}")
+        print(f"  orderStatus: {result.order.status}")
 
-    print(f"  Status: {result.status}")
+    print(f"  cycleStatus: {result.status}")
 
 
 # ---------------------------------------------------------------------------
@@ -946,7 +946,7 @@ def run_paper_session(
         for result in results:
             record = _build_paper_record(result, config_hash)
             if mode == "demo" and result.cycle_id in bgc_order_ids:
-                record["bgc_order_id"] = bgc_order_ids[result.cycle_id]
+                record["orderId"] = bgc_order_ids[result.cycle_id]
             if mode == "fixture":
                 record["verification_status"] = "not_applicable"
             else:
