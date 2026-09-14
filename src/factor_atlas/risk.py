@@ -327,6 +327,71 @@ def gate_max_quantity(
     )
 
 
+def gate_balance_check(
+    decision: TradeDecision,
+    *,
+    exchange_state: object | None = None,
+    config: RiskConfig,
+    **_kw: object,
+) -> RiskGateResult:
+    """Reject if available exchange balance < order notional."""
+    if exchange_state is None:
+        return RiskGateResult(
+            gate_name="balance_check",
+            passed=True,
+            reason="skipped: no exchange state (fixture mode)",
+        )
+    from factor_atlas.exchange import ExchangeState
+
+    assert isinstance(exchange_state, ExchangeState)
+    notional = decision.price * decision.quantity
+    passed = exchange_state.balance >= notional
+    return RiskGateResult(
+        gate_name="balance_check",
+        passed=passed,
+        reason=(
+            f"balance {exchange_state.balance} >= notional {notional}"
+            if passed
+            else f"balance {exchange_state.balance} < notional {notional}"
+        ),
+        value=float(exchange_state.balance),
+        threshold=float(notional),
+    )
+
+
+def gate_pending_order_check(
+    decision: TradeDecision,
+    *,
+    exchange_state: object | None = None,
+    **_kw: object,
+) -> RiskGateResult:
+    """Reject if a pending order exists for the same instrument."""
+    if exchange_state is None:
+        return RiskGateResult(
+            gate_name="pending_order_check",
+            passed=True,
+            reason="skipped: no exchange state (fixture mode)",
+        )
+    from factor_atlas.exchange import ExchangeState
+
+    assert isinstance(exchange_state, ExchangeState)
+    conflicting = [
+        o for o in exchange_state.pending_orders if o.symbol == decision.instrument
+    ]
+    passed = len(conflicting) == 0
+    return RiskGateResult(
+        gate_name="pending_order_check",
+        passed=passed,
+        reason=(
+            "no pending orders for instrument"
+            if passed
+            else f"{len(conflicting)} pending order(s) for {decision.instrument}"
+        ),
+        value=float(len(conflicting)),
+        threshold=0.0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Gate runner
 # ---------------------------------------------------------------------------
@@ -344,6 +409,8 @@ _GATE_ORDER: list[str] = [
     "duplicate_suppression",
     "concentration_guard",
     "max_quantity",
+    "balance_check",
+    "pending_order_check",
 ]
 
 _GATE_FNS = {
@@ -359,6 +426,8 @@ _GATE_FNS = {
     "duplicate_suppression": gate_duplicate_suppression,
     "concentration_guard": gate_concentration_guard,
     "max_quantity": gate_max_quantity,
+    "balance_check": gate_balance_check,
+    "pending_order_check": gate_pending_order_check,
 }
 
 
@@ -371,6 +440,7 @@ def run_gates(
     *,
     factor_name: str = "",
     event_id: str = "",
+    exchange_state: object | None = None,
 ) -> list[RiskGateResult]:
     """Run all risk gates. Returns results for ALL gates (pass and fail)."""
     kwargs = {
@@ -381,6 +451,7 @@ def run_gates(
         "config": config,
         "factor_name": factor_name,
         "event_id": event_id or decision.decision_id,
+        "exchange_state": exchange_state,
     }
 
     results: list[RiskGateResult] = []
@@ -399,6 +470,7 @@ def all_gates_passed(results: list[RiskGateResult]) -> bool:
 __all__ = [
     "RiskConfig",
     "all_gates_passed",
+    "gate_balance_check",
     "gate_concentration_guard",
     "gate_cooldown",
     "gate_daily_loss_cap",
@@ -410,6 +482,7 @@ __all__ = [
     "gate_max_position",
     "gate_max_quantity",
     "gate_min_sample_size",
+    "gate_pending_order_check",
     "gate_validation_threshold",
     "run_gates",
 ]

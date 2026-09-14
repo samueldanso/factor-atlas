@@ -18,6 +18,7 @@ from factor_atlas.contracts import (
 from factor_atlas.risk import (
     RiskConfig,
     all_gates_passed,
+    gate_balance_check,
     gate_concentration_guard,
     gate_cooldown,
     gate_daily_loss_cap,
@@ -29,6 +30,7 @@ from factor_atlas.risk import (
     gate_max_position,
     gate_max_quantity,
     gate_min_sample_size,
+    gate_pending_order_check,
     gate_validation_threshold,
     run_gates,
 )
@@ -416,7 +418,7 @@ class TestRunGates:
         v = _make_validation(passed=True)
         state = _fresh_state()
         results = run_gates(d, v, snap, state, RiskConfig(), factor_name="momentum")
-        assert len(results) == 12
+        assert len(results) == 14
         assert all_gates_passed(results)
 
     def test_one_fails(self) -> None:
@@ -437,8 +439,8 @@ class TestRunGates:
         v = _make_validation(passed=False)
         state = _fresh_state()
         results = run_gates(d, v, snap, state, RiskConfig(), factor_name="magic")
-        # Should still have all 12 gates
-        assert len(results) == 12
+        # Should still have all 14 gates
+        assert len(results) == 14
         names = {r.gate_name for r in results}
         assert "factor_allowlist" in names
         assert "data_freshness" in names
@@ -467,3 +469,101 @@ class TestAllGatesPassed:
 
     def test_empty(self) -> None:
         assert all_gates_passed([]) is True
+
+
+# ---------------------------------------------------------------------------
+# gate_balance_check
+# ---------------------------------------------------------------------------
+
+
+class TestGateBalanceCheck:
+    def test_passes_when_balance_sufficient(self) -> None:
+        from factor_atlas.exchange import ExchangeState
+
+        ex = ExchangeState(balance=Decimal(50000))
+        result = gate_balance_check(
+            _make_decision(price=Decimal(100), quantity=Decimal(5)),
+            exchange_state=ex,
+            config=RiskConfig(),
+        )
+        assert result.passed is True
+        assert result.gate_name == "balance_check"
+
+    def test_fails_when_balance_insufficient(self) -> None:
+        from factor_atlas.exchange import ExchangeState
+
+        ex = ExchangeState(balance=Decimal(100))
+        result = gate_balance_check(
+            _make_decision(price=Decimal(100), quantity=Decimal(50)),
+            exchange_state=ex,
+            config=RiskConfig(),
+        )
+        assert result.passed is False
+
+    def test_skipped_when_no_exchange_state(self) -> None:
+        result = gate_balance_check(
+            _make_decision(),
+            exchange_state=None,
+            config=RiskConfig(),
+        )
+        assert result.passed is True
+        assert "skipped" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# gate_pending_order_check
+# ---------------------------------------------------------------------------
+
+
+class TestGatePendingOrderCheck:
+    def test_passes_when_no_pending_orders(self) -> None:
+        from factor_atlas.exchange import ExchangeState
+
+        ex = ExchangeState(pending_orders=[])
+        result = gate_pending_order_check(_make_decision(), exchange_state=ex)
+        assert result.passed is True
+
+    def test_fails_when_conflicting_pending_order(self) -> None:
+        from factor_atlas.exchange import ExchangeOrder, ExchangeState
+
+        ex = ExchangeState(
+            pending_orders=[
+                ExchangeOrder(
+                    order_id="123",
+                    symbol="RAAPLUSDT",
+                    side="buy",
+                    price=Decimal(330),
+                    qty=Decimal(1),
+                    status="open",
+                )
+            ]
+        )
+        result = gate_pending_order_check(
+            _make_decision(instrument="RAAPLUSDT"), exchange_state=ex
+        )
+        assert result.passed is False
+
+    def test_passes_when_pending_order_is_different_instrument(self) -> None:
+        from factor_atlas.exchange import ExchangeOrder, ExchangeState
+
+        ex = ExchangeState(
+            pending_orders=[
+                ExchangeOrder(
+                    order_id="456",
+                    symbol="NVDAUSDT",
+                    side="buy",
+                    price=Decimal(500),
+                    qty=Decimal(1),
+                    status="open",
+                )
+            ]
+        )
+        result = gate_pending_order_check(
+            _make_decision(instrument="AAPLUSDT"), exchange_state=ex
+        )
+        assert result.passed is True
+
+    def test_skipped_when_no_exchange_state(self) -> None:
+        result = gate_pending_order_check(_make_decision(), exchange_state=None)
+        assert result.passed is True
+        assert "skipped" in result.reason
