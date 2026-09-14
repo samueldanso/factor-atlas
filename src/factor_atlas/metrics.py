@@ -117,9 +117,10 @@ def compute_metrics(closed_trades: list[ClosedTrade]) -> dict[str, Any]:
     )
 
     # Turnover: sum(abs(notional)) / avg equity
+    # Use abs() to avoid nonsensical negative turnover when all trades are losses
     total_notional = sum(abs(float(t.entry_price * t.quantity)) for t in closed_trades)
-    avg_equity = sum(cumulative) / n if n > 0 else 1.0
-    turnover = total_notional / avg_equity if avg_equity != 0 else 0.0
+    avg_equity = max(abs(sum(cumulative) / n), 1.0) if n > 0 else 1.0
+    turnover = total_notional / avg_equity
 
     # Average hold hours
     avg_hold = sum(t.hold_duration_hours for t in closed_trades) / n

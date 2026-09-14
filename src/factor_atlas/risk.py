@@ -343,7 +343,8 @@ def gate_balance_check(
         )
     from factor_atlas.exchange import ExchangeState
 
-    assert isinstance(exchange_state, ExchangeState)
+    if not isinstance(exchange_state, ExchangeState):
+        raise TypeError(f"Expected ExchangeState, got {type(exchange_state)}")
     notional = decision.price * decision.quantity
     passed = exchange_state.balance >= notional
     return RiskGateResult(
@@ -374,7 +375,8 @@ def gate_pending_order_check(
         )
     from factor_atlas.exchange import ExchangeState
 
-    assert isinstance(exchange_state, ExchangeState)
+    if not isinstance(exchange_state, ExchangeState):
+        raise TypeError(f"Expected ExchangeState, got {type(exchange_state)}")
     conflicting = [
         o for o in exchange_state.pending_orders if o.symbol == decision.instrument
     ]

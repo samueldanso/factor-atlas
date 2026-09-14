@@ -773,8 +773,8 @@ def run_paper_session(
                     f"(local={div.local_value}, exchange={div.exchange_value})",
                     file=sys.stderr,
                 )
-        except Exception as e:  # noqa: BLE001
-            print(f"  Pre-flight exchange query failed: {e}", file=sys.stderr)
+        except Exception as e:
+            raise RuntimeError(f"Pre-flight exchange query failed: {e}") from e
 
     if mode == "demo":
         llm_provider = BedrockProvider()
@@ -869,7 +869,12 @@ def run_paper_session(
                     verification_statuses[cycle_id] = classify_order_status(
                         order_detail.status
                     )
-                except (RuntimeError, OSError, ValueError) as e:
+                except (
+                    RuntimeError,
+                    OSError,
+                    ValueError,
+                    subprocess.TimeoutExpired,
+                ) as e:
                     print(
                         f"  Order verification failed for {oid}: {e}", file=sys.stderr
                     )
