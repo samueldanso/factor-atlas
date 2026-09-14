@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from factor_atlas.broker import BrokerState, ClosedTrade, OpenPosition
 from factor_atlas.metrics import compute_metrics
@@ -28,7 +29,7 @@ def _load_state(artifacts_dir: Path) -> BrokerState:
     return state
 
 
-def _find_runs(artifacts_dir: Path) -> list[dict]:
+def _find_runs(artifacts_dir: Path) -> list[dict[str, Any]]:
     if not artifacts_dir.exists():
         return []
     runs = []

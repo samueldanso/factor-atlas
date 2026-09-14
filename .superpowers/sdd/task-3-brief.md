@@ -1,123 +1,221 @@
-# Task T3 Brief: Autonomous Discovery-and-Decision Cycle
+### Task 3: New risk gates (balance_check, pending_order_check)
 
-## Spec Section
-Technical spec → Autonomous cycle contract; tasks/plan.md T3
+**Files:**
+- Modify: `src/factor_atlas/risk.py`
+- Modify: `tests/test_risk.py`
 
-## Scope
-Add the autonomous cycle runner that: observes an event, proposes multiple bounded hypotheses, iterates evaluation/backtesting within a search budget, and asks a decision provider to select only from validated candidates.
+**Interfaces:**
+- Consumes: `ExchangeState` from `factor_atlas.exchange`, `TradeDecision` from `factor_atlas.contracts`, `RiskConfig` from `factor_atlas.risk`
+- Produces:
+  - `gate_balance_check(decision, *, exchange_state, config, **_kw) -> RiskGateResult`
+  - `gate_pending_order_check(decision, *, exchange_state, **_kw) -> RiskGateResult`
+  - Updated `run_gates()` signature accepts optional `exchange_state: ExchangeState | None` kwarg
+  - Gates 13 and 14 are skipped when `exchange_state is None` (fixture mode)
 
-## Dependencies
-- T1: contracts (MarketSnapshot, FactorHypothesis, TradeDecision, ValidationResult)
-- T2: factor registry (`compute_factor`, `FACTOR_REGISTRY`) and validation engine (`validate_factor`)
-
-## Architecture
-
-### Proposer Interface (Protocol)
-```python
-class Proposer(Protocol):
-    def propose(self, snapshot: MarketSnapshot, budget: int) -> list[FactorHypothesis]:
-        """Generate up to `budget` hypotheses for a given snapshot."""
-        ...
-```
-
-Two implementations:
-1. **FixtureProposer**: returns pre-built fixture hypotheses (credential-free, deterministic)
-2. (Later T6: LLMProposer behind the same interface)
-
-### DecisionProvider Interface (Protocol)
-```python
-class DecisionProvider(Protocol):
-    def decide(
-        self,
-        snapshot: MarketSnapshot,
-        candidates: list[tuple[FactorHypothesis, ValidationResult]],
-        cycle_id: str,
-    ) -> TradeDecision | None:
-        """Select one validated candidate and return a TradeDecision, or None if no trade."""
-        ...
-```
-
-Two implementations:
-1. **FixtureDecisionProvider**: deterministically selects the best Sharpe candidate (credential-free)
-2. (Later T6: LLMDecisionProvider behind the same interface)
-
-### CycleRunner
-The core orchestrator that runs one autonomous cycle:
+- [ ] **Step 1: Write tests for the two new gates**
 
 ```python
-@dataclass
-class CycleResult:
-    cycle_id: str
-    snapshot: MarketSnapshot
-    hypotheses: list[FactorHypothesis]
-    evaluations: list[tuple[FactorHypothesis, ValidationResult]]
-    validated: list[tuple[FactorHypothesis, ValidationResult]]
-    decision: TradeDecision | None
-    status: Literal["accepted", "no_candidate", "no_hypothesis"]
+# Add to tests/test_risk.py — append these test classes
+
+
+class TestGateBalanceCheck:
+    def test_passes_when_balance_sufficient(self) -> None:
+        from factor_atlas.exchange import ExchangeState
+
+        ex = ExchangeState(balance=Decimal("50000"))
+        result = gate_balance_check(
+            _decision(price=Decimal("100"), quantity=Decimal("5")),
+            exchange_state=ex,
+            config=RiskConfig(),
+        )
+        assert result.passed is True
+        assert result.gate_name == "balance_check"
+
+    def test_fails_when_balance_insufficient(self) -> None:
+        from factor_atlas.exchange import ExchangeState
+
+        ex = ExchangeState(balance=Decimal("100"))
+        result = gate_balance_check(
+            _decision(price=Decimal("100"), quantity=Decimal("50")),
+            exchange_state=ex,
+            config=RiskConfig(),
+        )
+        assert result.passed is False
+
+
+class TestGatePendingOrderCheck:
+    def test_passes_when_no_pending_orders(self) -> None:
+        from factor_atlas.exchange import ExchangeState
+
+        ex = ExchangeState(pending_orders=[])
+        result = gate_pending_order_check(_decision(), exchange_state=ex)
+        assert result.passed is True
+
+    def test_fails_when_conflicting_pending_order(self) -> None:
+        from factor_atlas.exchange import ExchangeOrder, ExchangeState
+
+        ex = ExchangeState(
+            pending_orders=[
+                ExchangeOrder(
+                    order_id="123",
+                    symbol="RAAPLUSDT",
+                    side="buy",
+                    price=Decimal("330"),
+                    qty=Decimal("1"),
+                    status="open",
+                )
+            ]
+        )
+        result = gate_pending_order_check(_decision(), exchange_state=ex)
+        assert result.passed is False
 ```
 
-Steps:
-1. **Observe**: receive a MarketSnapshot
-2. **Propose**: call proposer.propose(snapshot, budget) → list of hypotheses
-3. **Evaluate**: for each hypothesis, run validate_factor with OHLCV data → collect ValidationResults
-4. **Filter**: keep only those with passed=True
-5. **Decide**: if validated candidates exist, call decision_provider.decide() → TradeDecision or None
-6. Return CycleResult with all intermediate state
+- [ ] **Step 2: Run tests to verify they fail**
 
-### MultiCycleRunner
-Runs multiple cycles from a list of snapshots:
+Run: `uv run pytest tests/test_risk.py::TestGateBalanceCheck -v`
+Expected: FAIL with `ImportError: cannot import name 'gate_balance_check'`
+
+- [ ] **Step 3: Implement the two new gates**
+
+Add to `src/factor_atlas/risk.py` after the existing `gate_max_quantity` function:
 
 ```python
-def run_cycles(
-    snapshots: list[MarketSnapshot],
-    ohlcv_data: dict[str, pd.DataFrame],  # instrument -> OHLCV
-    proposer: Proposer,
-    decision_provider: DecisionProvider,
-    search_budget: int = 5,
-) -> list[CycleResult]:
+def gate_balance_check(
+    decision: TradeDecision,
+    *,
+    exchange_state: object | None = None,
+    config: RiskConfig,
+    **_kw: object,
+) -> RiskGateResult:
+    """Reject if available exchange balance < order notional."""
+    if exchange_state is None:
+        return RiskGateResult(
+            gate_name="balance_check",
+            passed=True,
+            reason="skipped: no exchange state (fixture mode)",
+        )
+    from factor_atlas.exchange import ExchangeState
+
+    assert isinstance(exchange_state, ExchangeState)
+    notional = decision.price * decision.quantity
+    passed = exchange_state.balance >= notional
+    return RiskGateResult(
+        gate_name="balance_check",
+        passed=passed,
+        reason=(
+            f"balance {exchange_state.balance} >= notional {notional}"
+            if passed
+            else f"balance {exchange_state.balance} < notional {notional}"
+        ),
+        value=float(exchange_state.balance),
+        threshold=float(notional),
+    )
+
+
+def gate_pending_order_check(
+    decision: TradeDecision,
+    *,
+    exchange_state: object | None = None,
+    **_kw: object,
+) -> RiskGateResult:
+    """Reject if a pending order exists for the same instrument."""
+    if exchange_state is None:
+        return RiskGateResult(
+            gate_name="pending_order_check",
+            passed=True,
+            reason="skipped: no exchange state (fixture mode)",
+        )
+    from factor_atlas.exchange import ExchangeState
+
+    assert isinstance(exchange_state, ExchangeState)
+    conflicting = [
+        o for o in exchange_state.pending_orders if o.symbol == decision.instrument
+    ]
+    passed = len(conflicting) == 0
+    return RiskGateResult(
+        gate_name="pending_order_check",
+        passed=passed,
+        reason=(
+            "no pending orders for instrument"
+            if passed
+            else f"{len(conflicting)} pending order(s) for {decision.instrument}"
+        ),
+        value=float(len(conflicting)),
+        threshold=0.0,
+    )
 ```
 
-Must proceed **without human approval** between cycles. Each cycle is independent.
+Then update `_GATE_ORDER` and `_GATE_FNS`:
 
-## Files to create
-- `src/factor_atlas/proposer.py` — Proposer protocol + FixtureProposer
-- `src/factor_atlas/decision.py` — DecisionProvider protocol + FixtureDecisionProvider
-- `src/factor_atlas/orchestrator.py` — CycleRunner + MultiCycleRunner + CycleResult
-- `tests/test_orchestrator.py` — cycle tests
+```python
+_GATE_ORDER: list[str] = [
+    "factor_allowlist",
+    "data_freshness",
+    "min_sample_size",
+    "validation_threshold",
+    "max_notional",
+    "max_position",
+    "exposure_cap",
+    "cooldown",
+    "daily_loss_cap",
+    "duplicate_suppression",
+    "concentration_guard",
+    "max_quantity",
+    "balance_check",
+    "pending_order_check",
+]
 
-## Important implementation details
-- `from __future__ import annotations` in all files
-- FixtureProposer generates hypotheses from the registered factor vocabulary for the snapshot's instrument
-- FixtureDecisionProvider picks the candidate with the highest Sharpe ratio
-- If no hypotheses proposed, CycleResult.status = "no_hypothesis"
-- If no candidates pass validation, CycleResult.status = "no_candidate"  
-- If a decision is made, CycleResult.status = "accepted"
-- The runner MUST NOT pause for human approval between cycles
-- Use uuid4 for cycle_id generation (deterministic uuids via uuid5 in fixture mode)
-- All Protocols should use `typing.Protocol` with `runtime_checkable`
-- Import OHLCV fixture data from `factor_atlas.fixtures.events` for testing
+_GATE_FNS = {
+    # ... existing entries ...
+    "balance_check": gate_balance_check,
+    "pending_order_check": gate_pending_order_check,
+}
+```
 
-## Acceptance Criteria
-1. The runner proceeds without human approval pause
-2. No passing candidate produces no order (status="no_candidate")
-3. The decision contains instrument, side, quantity, and rationale
-4. Multi-cycle fixture run completes autonomously
-5. Candidate allowlist test: decision_provider cannot select non-validated candidates
-6. Accepted and no-candidate cycles both demonstrated
-7. `uv run pytest tests/test_orchestrator.py -v` passes
-8. All prior tests still pass (`uv run pytest tests/ -v`)
-9. `uv run ruff check .` clean
-10. `uv run ruff format --check .` clean
-11. `uv run mypy src/ tests/` clean
+Update `run_gates` signature to accept `exchange_state`:
 
-## Credential mode
-Unused — pure fixtures, no network, no API.
+```python
+def run_gates(
+    decision: TradeDecision,
+    validation: ValidationResult,
+    snapshot: MarketSnapshot,
+    broker_state: BrokerState,
+    config: RiskConfig,
+    *,
+    factor_name: str = "",
+    event_id: str = "",
+    exchange_state: object | None = None,
+) -> list[RiskGateResult]:
+    kwargs = {
+        "decision": decision,
+        "validation": validation,
+        "snapshot": snapshot,
+        "broker_state": broker_state,
+        "config": config,
+        "factor_name": factor_name,
+        "event_id": event_id or decision.decision_id,
+        "exchange_state": exchange_state,
+    }
+    # ... rest unchanged ...
+```
 
-## Verification commands
+Update `__all__` to include the new gate functions.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_risk.py -v`
+Expected: all tests PASS (existing gates still pass since exchange_state defaults to None)
+
+- [ ] **Step 5: Run full suite and lint**
+
+Run: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+Expected: all pass
+
+- [ ] **Step 6: Commit**
+
 ```bash
-uv run pytest tests/test_orchestrator.py -v
-uv run pytest tests/ -v
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src/ tests/
+git add src/factor_atlas/risk.py tests/test_risk.py
+git commit -m "feat(risk): add balance_check and pending_order_check exchange gates"
 ```
+
+---

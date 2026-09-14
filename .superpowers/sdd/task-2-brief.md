@@ -1,104 +1,236 @@
-# Task T2 Brief: Registered Factors and Deterministic Validation
+### Task 2: State reconciliation module
 
-## Spec Section
-Technical spec → Core contracts (Factor hypothesis, Validation result); tasks/plan.md T2
+**Files:**
+- Create: `src/factor_atlas/reconcile.py`
+- Create: `tests/test_reconcile.py`
 
-## Scope
-Build the closed factor registry, factor calculation functions, walk-forward/backtest validation loop, and metrics including fees, slippage, turnover, Sharpe, Sortino, drawdown, and win-rate.
+**Interfaces:**
+- Consumes: `ExchangeState` from `factor_atlas.exchange`, `BrokerState` and `OpenPosition` from `factor_atlas.broker`
+- Produces:
+  - `Divergence` dataclass with fields: `instrument: str`, `kind: str`, `local_value: str`, `exchange_value: str`
+  - `reconcile_positions(broker_state: BrokerState, exchange_state: ExchangeState) -> list[Divergence]` — compares local open_positions with exchange positions, trusts exchange, updates broker_state in-place, returns list of divergences found
 
-## Dependencies
-T1 contracts are complete. Import from `factor_atlas.contracts` and `factor_atlas.config`.
+- [ ] **Step 1: Write tests for reconciliation**
 
-## Factor Registry
+```python
+# tests/test_reconcile.py
+"""Tests for state reconciliation — exchange is authoritative."""
 
-Create a closed registry of factor calculation functions. Each registered factor:
-- Has a unique name matching the vocabulary in `factor_atlas.config.FACTOR_VOCABULARY`: {"momentum", "mean_reversion", "volatility_breakout", "volume_spike", "ema_crossover"}
-- Takes a pandas DataFrame of OHLCV data + parameters dict → returns a pandas Series of signals (-1, 0, +1)
-- Has parameter schemas with valid ranges
-- Rejects unknown factor names at lookup time
+from __future__ import annotations
 
-### Factor implementations (deterministic, no randomness):
+from datetime import UTC, datetime
+from decimal import Decimal
 
-1. **momentum**: Returns price rate of change over `lookback` periods. Signal: +1 if ROC > threshold, -1 if ROC < -threshold, else 0. Params: `lookback` (int, 5-200), `threshold` (float, 0.0-0.5).
+from factor_atlas.broker import BrokerState, OpenPosition
+from factor_atlas.exchange import ExchangePosition, ExchangeState
+from factor_atlas.reconcile import Divergence, reconcile_positions
 
-2. **mean_reversion**: Z-score of price relative to rolling mean. Signal: +1 if z < -entry_z (buy the dip), -1 if z > entry_z (sell the rip), else 0. Params: `lookback` (int, 10-200), `entry_z` (float, 1.0-3.0).
 
-3. **volatility_breakout**: Signal when price breaks above/below Bollinger Bands. +1 if close > upper band, -1 if close < lower band, else 0. Params: `lookback` (int, 10-100), `num_std` (float, 1.0-3.0).
+def _make_exchange_state(
+    positions: list[ExchangePosition] | None = None,
+    balance: Decimal = Decimal("50000"),
+) -> ExchangeState:
+    return ExchangeState(
+        balance=balance,
+        positions=positions or [],
+        pending_orders=[],
+        queried_at=datetime.now(tz=UTC),
+    )
 
-4. **volume_spike**: Signal when volume exceeds rolling average by a multiple. +1 if volume > avg * multiplier AND close > open (bullish), -1 if volume > avg * multiplier AND close < open (bearish), else 0. Params: `lookback` (int, 5-100), `multiplier` (float, 1.5-5.0).
 
-5. **ema_crossover**: Fast EMA crosses slow EMA. +1 if fast > slow (golden cross), -1 if fast < slow (death cross), else 0. Params: `fast_period` (int, 5-50), `slow_period` (int, 20-200). Reject if fast_period >= slow_period.
+def _make_open_position(instrument: str = "AAPLUSDT") -> OpenPosition:
+    return OpenPosition(
+        instrument=instrument,
+        side="buy",
+        entry_price=Decimal("330.33"),
+        quantity=Decimal("2"),
+        entry_time=datetime.now(tz=UTC),
+        hypothesis_id="hyp-1",
+        factor_name="momentum",
+        cycle_id="cycle-1",
+    )
 
-## Walk-Forward Validation
 
-Implement a walk-forward validation engine:
+class TestReconcilePositions:
+    def test_no_divergence_when_matching(self) -> None:
+        broker = BrokerState()
+        pos = _make_open_position("AAPLUSDT")
+        broker.open_positions["AAPLUSDT"] = pos
 
-1. Split data into train/test windows (configurable ratio, default 70/30)
-2. Calculate factor signals on train window
-3. Compute returns from signals (next-bar returns * signal)
-4. Apply fees and slippage to returns
-5. Calculate metrics on the test window
-6. Return a `ValidationResult` with all metrics labeled
+        ex_state = _make_exchange_state(
+            [
+                ExchangePosition(
+                    symbol="AAPLUSDT",
+                    side="long",
+                    size=Decimal("2"),
+                    entry_price=Decimal("330.33"),
+                    unrealized_pnl=Decimal("0"),
+                )
+            ]
+        )
+        divergences = reconcile_positions(broker, ex_state)
+        assert divergences == []
+        assert "AAPLUSDT" in broker.open_positions
 
-### Metrics to compute (all deterministic):
-- `total_return`: cumulative return over test window (observed)
-- `sharpe_ratio`: annualized Sharpe (observed). Use 252 trading days.
-- `sortino_ratio`: annualized Sortino using downside deviation (observed)
-- `max_drawdown`: maximum peak-to-trough drawdown (observed)
-- `turnover`: average absolute signal change per bar (observed)
-- `fees`: total estimated fees = turnover * fee_rate (estimated). Default fee_rate = 0.001
-- `slippage`: total estimated slippage = turnover * slippage_bps (estimated). Default slippage_bps = 0.0005
-- `win_rate`: fraction of bars with positive return when signal != 0 (observed)
+    def test_local_position_not_on_exchange_is_removed(self) -> None:
+        broker = BrokerState()
+        broker.open_positions["AAPLUSDT"] = _make_open_position("AAPLUSDT")
 
-### Rejection criteria:
-- Insufficient samples: if test window has fewer than `MIN_OBSERVATIONS` (20) bars
-- Leakage: train and test windows must not overlap
-- No signal: if all signals are 0, reject
+        ex_state = _make_exchange_state([])
+        divergences = reconcile_positions(broker, ex_state)
 
-### Validation threshold defaults (configurable):
-- min_sharpe: 0.5
-- max_drawdown: -0.20 (reject if drawdown worse than -20%)
-- min_observations: 20
+        assert len(divergences) == 1
+        assert divergences[0].kind == "local_only"
+        assert "AAPLUSDT" not in broker.open_positions
 
-## Files to create
-- `src/factor_atlas/factors.py` — factor registry + factor calculation functions
-- `src/factor_atlas/validation.py` — walk-forward validation engine + metrics
-- `tests/test_factors.py` — factor registry and calculation tests
-- `tests/test_validation.py` — validation engine, metrics, rejection tests
+    def test_exchange_position_not_local_is_logged(self) -> None:
+        broker = BrokerState()
+        ex_state = _make_exchange_state(
+            [
+                ExchangePosition(
+                    symbol="NVDAUSDT",
+                    side="long",
+                    size=Decimal("1"),
+                    entry_price=Decimal("100"),
+                    unrealized_pnl=Decimal("5"),
+                )
+            ]
+        )
+        divergences = reconcile_positions(broker, ex_state)
+        assert len(divergences) == 1
+        assert divergences[0].kind == "exchange_only"
 
-## Important implementation details
-- `from __future__ import annotations` in all files
-- All factor functions must be pure functions (no side effects, no randomness)
-- Use pandas/numpy for calculations; they are already in pyproject.toml
-- Factor functions signature: `(df: pd.DataFrame, params: dict[str, Any]) -> pd.Series`
-- Registry is a dict mapping factor_name → (calc_function, param_schema)
-- Parameter schema validation uses the ranges above
-- Tests must use hand-calculated fixtures for at least one metric (e.g., verify Sharpe ratio by hand for a known return series)
-- Tests must verify leakage rejection (overlapping windows)
-- Tests must verify insufficient-sample rejection
-- Tests must verify deterministic replay (same input → same output)
+    def test_size_mismatch_trusts_exchange(self) -> None:
+        broker = BrokerState()
+        pos = _make_open_position("AAPLUSDT")
+        pos.quantity = Decimal("5")
+        broker.open_positions["AAPLUSDT"] = pos
 
-## Acceptance Criteria
-1. Only registered factors execute; unknown factor names raise ValueError
-2. Each factor returns signals in {-1, 0, +1}
-3. Parameter validation rejects out-of-range values
-4. Metrics carry observed/estimated/targeted labels
-5. Leakage is detected and rejected
-6. Insufficient samples rejected
-7. Hand-calculated fixture test for at least Sharpe
-8. Deterministic replay verified
-9. `uv run pytest tests/test_factors.py tests/test_validation.py -v` passes
-10. `uv run ruff check .` clean
-11. `uv run ruff format --check .` clean
-12. `uv run mypy src/ tests/` clean
-
-## Credential mode
-Unused — pure fixtures, no network, no API.
-
-## Verification commands
-```bash
-uv run pytest tests/test_factors.py tests/test_validation.py -v
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src/ tests/
+        ex_state = _make_exchange_state(
+            [
+                ExchangePosition(
+                    symbol="AAPLUSDT",
+                    side="long",
+                    size=Decimal("2"),
+                    entry_price=Decimal("330.33"),
+                    unrealized_pnl=Decimal("0"),
+                )
+            ]
+        )
+        divergences = reconcile_positions(broker, ex_state)
+        assert len(divergences) == 1
+        assert divergences[0].kind == "size_mismatch"
+        assert broker.open_positions["AAPLUSDT"].quantity == Decimal("2")
 ```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `uv run pytest tests/test_reconcile.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'factor_atlas.reconcile'`
+
+- [ ] **Step 3: Implement reconciliation module**
+
+```python
+# src/factor_atlas/reconcile.py
+"""Reconcile local BrokerState with exchange truth."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from factor_atlas.broker import BrokerState
+    from factor_atlas.exchange import ExchangeState
+
+
+@dataclass(frozen=True)
+class Divergence:
+    instrument: str
+    kind: str  # "local_only", "exchange_only", "size_mismatch"
+    local_value: str
+    exchange_value: str
+
+
+def reconcile_positions(
+    broker_state: BrokerState,
+    exchange_state: ExchangeState,
+) -> list[Divergence]:
+    """Compare local open_positions with exchange positions.
+
+    Exchange is authoritative. Updates broker_state in place.
+    Returns a list of divergences found.
+    """
+    divergences: list[Divergence] = []
+
+    exchange_by_symbol: dict[str, tuple[str, Decimal]] = {}
+    for ep in exchange_state.positions:
+        exchange_by_symbol[ep.symbol] = (ep.side, ep.size)
+
+    local_instruments = set(broker_state.open_positions.keys())
+    exchange_instruments = set(exchange_by_symbol.keys())
+
+    # Local positions not on exchange — remove them
+    for inst in local_instruments - exchange_instruments:
+        divergences.append(
+            Divergence(
+                instrument=inst,
+                kind="local_only",
+                local_value=str(broker_state.open_positions[inst].quantity),
+                exchange_value="0",
+            )
+        )
+        del broker_state.open_positions[inst]
+
+    # Exchange positions not local — log but can't reconstruct full OpenPosition
+    for inst in exchange_instruments - local_instruments:
+        side, size = exchange_by_symbol[inst]
+        divergences.append(
+            Divergence(
+                instrument=inst,
+                kind="exchange_only",
+                local_value="0",
+                exchange_value=str(size),
+            )
+        )
+
+    # Both exist — check size match
+    for inst in local_instruments & exchange_instruments:
+        _, ex_size = exchange_by_symbol[inst]
+        local_pos = broker_state.open_positions[inst]
+        if local_pos.quantity != ex_size:
+            divergences.append(
+                Divergence(
+                    instrument=inst,
+                    kind="size_mismatch",
+                    local_value=str(local_pos.quantity),
+                    exchange_value=str(ex_size),
+                )
+            )
+            local_pos.quantity = ex_size
+
+    return divergences
+
+
+__all__ = ["Divergence", "reconcile_positions"]
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_reconcile.py -v`
+Expected: all tests PASS
+
+- [ ] **Step 5: Run full suite and lint**
+
+Run: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+Expected: all pass
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/factor_atlas/reconcile.py tests/test_reconcile.py
+git commit -m "feat(reconcile): add exchange state reconciliation module"
+```
+
+---

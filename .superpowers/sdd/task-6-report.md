@@ -1,44 +1,30 @@
-# Task T6 Report: LLM Behind Safe Interfaces
+# Task 6 Report: Separate research prices from execution prices
 
-## Status: COMPLETE
+## Status: DONE
 
-## Commits
-- `0a11ddb` feat(llm): add provider-neutral LLM boundary with safety validation
+## Commit
+`6ab6ad9` — `fix(runner): use perp prices for exit evaluation, not SPOT research prices`
 
-## Files Created
-- `src/factor_atlas/llm/__init__.py` — package exports
-- `src/factor_atlas/llm/provider.py` — LLMProvider protocol + FixtureLLMProvider
-- `src/factor_atlas/llm/proposer.py` — LLMProposer with `validate_llm_hypothesis`
-- `src/factor_atlas/llm/decision.py` — LLMDecisionProvider with `validate_llm_decision`
-- `src/factor_atlas/llm/prompts.py` — PROPOSE_SYSTEM, DECIDE_SYSTEM, user-prompt builders
-- `tests/test_llm_boundary.py` — 23 safety boundary tests
+## Files Modified
+- `src/factor_atlas/runner.py`:
+  - Added `_fetch_perp_prices(instruments: list[str]) -> dict[str, Decimal]` after `_fetch_candles_bgc`. Fetches latest USDT-FUTURES 1D candle close price per execution symbol via bgc subprocess. Silently skips symbols whose bgc call fails or returns empty data.
+  - Updated `_process_demo_exits` signature: replaced `ohlcv_data: dict[str, pd.DataFrame]` parameter with `perp_prices: dict[str, Decimal]`. Now looks up `RESEARCH_TO_EXECUTION` mapping at the top of the loop (once, for both price lookup and order placement) instead of duplicating it. Exits skip an instrument if its perp price is unavailable.
+  - Updated `run_paper_session` call site: before calling `_process_demo_exits`, derives the set of execution symbols from open position keys, fetches their perp prices via `_fetch_perp_prices`, and passes `perp_prices` instead of `ohlcv_data`.
+- `tests/test_runner.py`:
+  - Added `TestPerpPriceFetching` with two tests: happy-path decimal return and skip-on-bgc-failure. Both mock `subprocess.run`.
 
 ## Test Summary
-- **23 new tests**, all passing
-- **213 total** (190 prior + 23 new), all passing
-- `uv run ruff check .` — clean
-- `uv run ruff format --check .` — clean
-- `uv run mypy src/ tests/` — clean, no issues
+- 291 tests pass (2 new in `TestPerpPriceFetching`)
+- ruff check clean
+- ruff format clean
 
-## Acceptance Criteria Verification
-| # | Criterion | Status |
-|---|-----------|--------|
-| 1 | LLM output is schema-validated | PASS — JSON parsed and validated against Pydantic schemas |
-| 2 | Limited to registered factors and validated candidates | PASS — unknown factors, bad params, bad instruments all rejected |
-| 3 | Never controls gate outcomes or raw order placement | PASS — LLM only proposes/selects; gates and broker remain external |
-| 4 | Malformed output handled gracefully | PASS — garbage JSON, explosions, bad types all return empty/None |
-| 5 | Credential-free fixture run | PASS — full propose→decide cycle with FixtureLLMProvider |
-| 6 | All prior tests still pass | PASS — 190 existing tests unaffected |
-| 7 | ruff check clean | PASS |
-| 8 | ruff format clean | PASS |
-| 9 | mypy clean | PASS |
-
-## Architecture Decisions
-- `LLMProvider` is a `typing.Protocol` (runtime_checkable), matching the existing Proposer/DecisionProvider pattern
-- `LLMProposer` satisfies the `Proposer` protocol; `LLMDecisionProvider` satisfies `DecisionProvider`
-- Validation is a separate function (`validate_llm_hypothesis`, `validate_llm_decision`) for direct unit testing
-- Prompt templates are deterministic strings built from config constants, ensuring vocabulary drift is impossible
-- FixtureLLMProvider parses prompt keywords to decide propose vs decide response, returns valid JSON from the registry
+## Acceptance Criteria Verified
+1. `_fetch_perp_prices` added and importable — verified by `TestPerpPriceFetching::test_fetch_perp_prices_returns_decimals`
+2. Returns `Decimal` values keyed by execution symbol — verified by assertion `prices["AAPLUSDT"] == Decimal("332.50")`
+3. Skips failed symbols without crashing — verified by `test_fetch_perp_prices_skips_failed_symbol`
+4. `_process_demo_exits` takes `perp_prices` not `ohlcv_data` — verified by full test suite passing (no callers use old signature)
+5. Call site in `run_paper_session` fetches perp prices and passes them — verified by 291/291 tests passing including demo-path tests
+6. Fixture mode unchanged (`_process_fixture_exits` untouched) — verified by all fixture-mode tests passing
 
 ## Concerns
-- None. No existing code modified. All new code is additive. Optional OpenAI adapter deferred per brief.
+- None

@@ -18,7 +18,7 @@ Use this document as the source of truth for setup. Check each item before handi
 - [x] Demo account funded with virtual balance (100,000 USDT verified)
 - [x] Demo credentials stored locally only
 - [x] No credentials stored in Git, `resources/`, screenshots, or chat
-- [ ] Optional: isolated Agentic account evaluated for the final demo
+- [ ] Agentic sub-account (AG-WZR3S0G5) Demo API key — blocked, awaiting Bitget support
 
 ## 2. Local tools
 

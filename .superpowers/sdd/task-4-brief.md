@@ -1,154 +1,229 @@
-# Task T4 Brief: Deterministic Risk Gates and Automatic Paper Broker
+### Task 4: Enhanced metrics (Sortino, turnover, equity curve, avg hold hours)
 
-## Spec Section
-Technical spec → Risk gates; tasks/plan.md T4
+**Files:**
+- Modify: `src/factor_atlas/metrics.py`
+- Modify: `tests/test_runner.py` (manifest metrics assertions)
 
-## Scope
-Add sizing, exposure, freshness, loss, cooldown, duplicate, concentration, fee, and slippage controls. Execute accepted decisions automatically in an in-memory paper broker with fee/slippage simulation and no approval pause.
+**Interfaces:**
+- Consumes: `list[ClosedTrade]` from `factor_atlas.broker`
+- Produces: updated `compute_metrics()` return dict adding keys: `sortino_ratio: float`, `turnover: float`, `avg_hold_hours: float`, `equity_curve: list[list[str | float]]` (each entry is `[iso_timestamp, cumulative_pnl]`)
 
-## Dependencies
-- T1: contracts (TradeDecision, PaperOrder, RiskGateResult)
-- T3: CycleResult with decision
+- [ ] **Step 1: Write test for new metrics**
 
-## Risk Gates
-
-Implement each gate as a pure function: `(decision, state) -> RiskGateResult`
-
-All gates are imported from `factor_atlas.config` thresholds (add new constants there).
-
-### Required gates:
-
-1. **factor_allowlist**: Reject if the hypothesis's factor_name is not in FACTOR_VOCABULARY. Always checked.
-
-2. **data_freshness**: Reject if the snapshot timestamp is older than `MAX_DATA_AGE_HOURS` (default: 24) from current time. In fixture mode, compare against the decision timestamp.
-
-3. **min_sample_size**: Reject if validation observations < MIN_OBSERVATIONS (20). Reads from the validation result.
-
-4. **validation_threshold**: Reject if validation did not pass (passed=False).
-
-5. **max_notional**: Reject if price * quantity > MAX_NOTIONAL (default: 10_000 USDT).
-
-6. **max_position**: Reject if adding this order would exceed MAX_CONCURRENT_POSITIONS (default: 3) open positions.
-
-7. **exposure_cap**: Reject if total open notional + this order's notional > MAX_EXPOSURE (default: 50_000 USDT).
-
-8. **cooldown**: Reject if the same instrument had an order within COOLDOWN_SECONDS (default: 300).
-
-9. **daily_loss_cap**: Reject if realized daily loss exceeds DAILY_LOSS_LIMIT (default: 2_000 USDT).
-
-10. **duplicate_suppression**: Reject if the same event_id + instrument + side was already processed in this session.
-
-11. **concentration_guard**: Reject if the same instrument would have more than MAX_CONCENTRATION_PER_INSTRUMENT (default: 2) open positions.
-
-### Gate runner:
 ```python
-def run_gates(
-    decision: TradeDecision,
-    validation: ValidationResult,
-    snapshot: MarketSnapshot,
-    broker_state: BrokerState,
-    config: RiskConfig,
-) -> list[RiskGateResult]:
-```
-Run all gates. Return results for ALL gates (not just failing). If ANY gate fails, the decision is vetoed.
+# Add to a new test file tests/test_metrics.py
+"""Tests for compute_metrics including Sortino, turnover, equity curve."""
 
-### RiskConfig (dataclass):
-All threshold constants in one typed config. Defaults match the values above.
+from __future__ import annotations
 
-## Paper Broker
+import math
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
-### BrokerState (mutable state):
-```python
-@dataclass
-class BrokerState:
-    balance: Decimal  # current USDT balance
-    positions: list[PaperOrder]  # open filled orders
-    order_history: list[PaperOrder]  # all orders (filled + rejected)
-    daily_pnl: Decimal  # running daily P&L
-    processed_events: set[str]  # (event_id, instrument, side) tuples for dedup
-    last_order_time: dict[str, datetime]  # instrument -> last order time for cooldown
-```
+from factor_atlas.broker import ClosedTrade
+from factor_atlas.metrics import compute_metrics
 
-### Execute function:
-```python
-def execute_paper_order(
-    decision: TradeDecision,
-    gate_results: list[RiskGateResult],
-    broker_state: BrokerState,
-    fee_rate: Decimal = Decimal("0.001"),
-    slippage_bps: Decimal = Decimal("0.0005"),
-) -> PaperOrder:
-```
 
-If all gates passed:
-- Calculate fees = notional * fee_rate
-- Calculate slippage = notional * slippage_bps
-- Deduct fees + slippage from balance
-- Create PaperOrder with status="filled", fill_price = decision.price
-- Update broker state (add to positions, order_history, update balance, etc.)
+def _make_trade(
+    pnl: str = "10",
+    pnl_pct: float = 0.03,
+    won: bool = True,
+    hold_hours: float = 4.0,
+    entry_price: str = "100",
+    quantity: str = "1",
+    offset_hours: int = 0,
+) -> ClosedTrade:
+    base = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
+    return ClosedTrade(
+        instrument="AAPLUSDT",
+        side="buy",
+        entry_price=Decimal(entry_price),
+        exit_price=Decimal(entry_price) + Decimal(pnl) / Decimal(quantity),
+        quantity=Decimal(quantity),
+        pnl=Decimal(pnl),
+        pnl_pct=pnl_pct,
+        entry_time=base + timedelta(hours=offset_hours),
+        exit_time=base + timedelta(hours=offset_hours + hold_hours),
+        hold_duration_hours=hold_hours,
+        won=won,
+        factor_name="momentum",
+    )
 
-If any gate failed:
-- Create PaperOrder with status="rejected", rejection_reason = first failing gate reason
-- Add to order_history but NOT positions
-- Do NOT deduct from balance
 
-### Constraints:
-- Balance must never go negative. If insufficient balance, reject with reason "insufficient_balance"
-- No approval pause between decision and execution
-- fee_rate and slippage_bps are configurable
+class TestComputeMetrics:
+    def test_empty_trades(self) -> None:
+        m = compute_metrics([])
+        assert m["total_trades"] == 0
+        assert m["sortino_ratio"] == 0.0
+        assert m["turnover"] == 0.0
+        assert m["avg_hold_hours"] == 0.0
+        assert m["equity_curve"] == []
 
-## Integration with Orchestrator
+    def test_single_winning_trade(self) -> None:
+        trades = [_make_trade(pnl="10", pnl_pct=0.1, won=True, hold_hours=6.0)]
+        m = compute_metrics(trades)
+        assert m["total_trades"] == 1
+        assert m["win_rate"] == 1.0
+        assert m["avg_hold_hours"] == 6.0
+        assert len(m["equity_curve"]) == 1
+        assert m["equity_curve"][0][1] == 10.0
 
-Add to CycleResult in orchestrator.py:
-```python
-gate_results: list[RiskGateResult] | None = None
-order: PaperOrder | None = None
-```
+    def test_sortino_excludes_upside(self) -> None:
+        trades = [
+            _make_trade(pnl="10", pnl_pct=0.1, won=True, offset_hours=0),
+            _make_trade(pnl="20", pnl_pct=0.2, won=True, offset_hours=8),
+            _make_trade(pnl="-5", pnl_pct=-0.05, won=False, offset_hours=16),
+        ]
+        m = compute_metrics(trades)
+        assert m["sortino_ratio"] != 0.0
+        assert m["sortino_ratio"] > m["sharpe_ratio"]
 
-Update the orchestrator to run gates and execute after a decision is made.
+    def test_turnover_computed(self) -> None:
+        trades = [
+            _make_trade(
+                pnl="10",
+                entry_price="100",
+                quantity="5",
+                hold_hours=4.0,
+                offset_hours=0,
+            ),
+        ]
+        m = compute_metrics(trades)
+        assert m["turnover"] > 0.0
 
-## Config additions (add to config.py):
-```python
-MAX_DATA_AGE_HOURS: int = 24
-MAX_NOTIONAL: str = "10000"  # Decimal string
-MAX_CONCURRENT_POSITIONS: int = 3
-MAX_EXPOSURE: str = "50000"  # Decimal string
-COOLDOWN_SECONDS: int = 300
-DAILY_LOSS_LIMIT: str = "2000"  # Decimal string
-MAX_CONCENTRATION_PER_INSTRUMENT: int = 2
-DEFAULT_FEE_RATE: str = "0.001"
-DEFAULT_SLIPPAGE_BPS: str = "0.0005"
-INITIAL_BALANCE: str = "100000"  # 100k USDT
+    def test_equity_curve_cumulative(self) -> None:
+        trades = [
+            _make_trade(pnl="10", offset_hours=0),
+            _make_trade(pnl="-5", pnl_pct=-0.05, won=False, offset_hours=8),
+            _make_trade(pnl="20", offset_hours=16),
+        ]
+        m = compute_metrics(trades)
+        curve = m["equity_curve"]
+        assert len(curve) == 3
+        assert curve[0][1] == 10.0
+        assert curve[1][1] == 5.0
+        assert curve[2][1] == 25.0
 ```
 
-## Files to create/modify
-- `src/factor_atlas/risk.py` — risk gates + RiskConfig + gate runner
-- `src/factor_atlas/broker.py` — BrokerState + execute_paper_order
-- `src/factor_atlas/config.py` — add new constants (MODIFY)
-- `src/factor_atlas/orchestrator.py` — integrate gates + broker into cycle (MODIFY)
-- `tests/test_risk.py` — test each gate individually
-- `tests/test_broker.py` — test execution, rejection, balance, fee math
+- [ ] **Step 2: Run tests to verify they fail**
 
-## Acceptance Criteria
-1. A passing decision is submitted automatically (no pause)
-2. Any veto prevents execution and is visible in gate results
-3. Balances never become negative
-4. Each gate has its own test verifying pass and fail paths
-5. Fee and slippage math is tested with hand-calculated values
-6. Bounded quantity check (reject if quantity exceeds some maximum)
-7. All prior tests still pass
-8. `uv run ruff check .` clean
-9. `uv run ruff format --check .` clean
-10. `uv run mypy src/ tests/` clean
+Run: `uv run pytest tests/test_metrics.py -v`
+Expected: FAIL with `KeyError: 'sortino_ratio'`
 
-## Credential mode
-Unused — pure fixtures, no network, no API.
+- [ ] **Step 3: Update compute_metrics**
 
-## Verification commands
+Replace the body of `compute_metrics` in `src/factor_atlas/metrics.py`:
+
+```python
+def compute_metrics(closed_trades: list[ClosedTrade]) -> dict[str, Any]:
+    """Compute performance metrics from closed trades.
+
+    Returns: total_trades, win_rate, total_pnl, avg_pnl, sharpe_ratio,
+    sortino_ratio, max_drawdown, profit_factor, turnover, avg_hold_hours,
+    equity_curve.
+    """
+    n = len(closed_trades)
+    if n == 0:
+        return {
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "total_pnl": "0",
+            "avg_pnl": "0",
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "profit_factor": None,
+            "turnover": 0.0,
+            "avg_hold_hours": 0.0,
+            "equity_curve": [],
+        }
+
+    wins = sum(1 for t in closed_trades if t.won)
+    total_pnl = sum((t.pnl for t in closed_trades), Decimal(0))
+    avg_pnl = total_pnl / n
+
+    returns = [t.pnl_pct for t in closed_trades]
+    mean_r = sum(returns) / n
+
+    # Sharpe
+    if n >= 2:
+        variance = sum((r - mean_r) ** 2 for r in returns) / (n - 1)
+        std_r = math.sqrt(variance) if variance > 0 else 0.0
+        sharpe = (mean_r / std_r * math.sqrt(365)) if std_r > 0 else 0.0
+    else:
+        sharpe = 0.0
+
+    # Sortino — only downside deviation
+    if n >= 2:
+        downside = [min(r - mean_r, 0) ** 2 for r in returns]
+        downside_var = sum(downside) / (n - 1)
+        downside_std = math.sqrt(downside_var) if downside_var > 0 else 0.0
+        sortino = (mean_r / downside_std * math.sqrt(365)) if downside_std > 0 else 0.0
+    else:
+        sortino = 0.0
+
+    # Equity curve and drawdown
+    cumulative: list[float] = []
+    equity_curve: list[list[str | float]] = []
+    running = 0.0
+    for t in closed_trades:
+        running += float(t.pnl)
+        cumulative.append(running)
+        equity_curve.append([t.exit_time.isoformat(), round(running, 4)])
+
+    peak = cumulative[0]
+    max_dd = 0.0
+    for val in cumulative:
+        peak = max(peak, val)
+        if peak > 0:
+            dd = (peak - val) / peak
+            max_dd = max(max_dd, dd)
+
+    # Profit factor
+    gross_profit = sum(float(t.pnl) for t in closed_trades if t.won)
+    gross_loss = abs(sum(float(t.pnl) for t in closed_trades if not t.won))
+    profit_factor: float | None = (
+        (gross_profit / gross_loss) if gross_loss > 0 else None
+    )
+
+    # Turnover: sum(abs(notional)) / avg equity
+    total_notional = sum(abs(float(t.entry_price * t.quantity)) for t in closed_trades)
+    avg_equity = sum(cumulative) / n if n > 0 else 1.0
+    turnover = total_notional / avg_equity if avg_equity != 0 else 0.0
+
+    # Average hold hours
+    avg_hold = sum(t.hold_duration_hours for t in closed_trades) / n
+
+    return {
+        "total_trades": n,
+        "win_rate": round(wins / n, 4),
+        "total_pnl": str(total_pnl),
+        "avg_pnl": str(avg_pnl),
+        "sharpe_ratio": round(sharpe, 4),
+        "sortino_ratio": round(sortino, 4),
+        "max_drawdown": round(max_dd, 4),
+        "profit_factor": round(profit_factor, 4) if profit_factor is not None else None,
+        "turnover": round(turnover, 4),
+        "avg_hold_hours": round(avg_hold, 2),
+        "equity_curve": equity_curve,
+    }
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_metrics.py -v`
+Expected: all tests PASS
+
+- [ ] **Step 5: Run full suite and lint**
+
+Run: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+Expected: all pass
+
+- [ ] **Step 6: Commit**
+
 ```bash
-uv run pytest tests/test_risk.py tests/test_broker.py -v
-uv run pytest tests/ -v
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src/ tests/
+git add src/factor_atlas/metrics.py tests/test_metrics.py
+git commit -m "feat(metrics): add Sortino, turnover, equity curve, avg hold hours"
 ```
+
+---

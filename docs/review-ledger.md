@@ -1,13 +1,13 @@
 # FactorAtlas — Claude Code Review Ledger
 
-Reviewer: Claude Code (sonnet-4-6)  
-Role: Auditor / instrument-policy enforcer  
+Reviewer: Claude Code (sonnet-4-6)
+Role: Auditor / instrument-policy enforcer
 Started: 2026-09-12
 
 ---
 
 ## T1 — Typed Contracts and Fixture Event Stream
-**Commit:** `2066c49`  
+**Commit:** `2066c49`
 **Verdict: ✅ CLEAN**
 
 Key checks:
@@ -22,7 +22,7 @@ Flags: none
 ---
 
 ## T2 — Registered Factors and Deterministic Validation
-**Commit:** `79e098b`  
+**Commit:** `79e098b`
 **Verdict: ✅ CLEAN**
 
 Key checks:
@@ -38,7 +38,7 @@ Flags: none
 ---
 
 ## T3 — Autonomous Discovery-and-Decision Cycle
-**Commit:** `95c6f46`  
+**Commit:** `95c6f46`
 **Verdict: ✅ CLEAN**
 
 Key checks:
@@ -54,7 +54,7 @@ Flags: none
 ---
 
 ## T4 — Deterministic Risk Gates and Automatic Paper Broker
-**Commit:** `e0dea1f`  
+**Commit:** `e0dea1f`
 **Verdict: ✅ CLEAN**
 
 Key checks:
@@ -71,7 +71,7 @@ Flags: none
 ---
 
 ## T5 — Auditable Cycles and Deterministic Replay
-**Commit:** `32f436f`  
+**Commit:** `32f436f`
 **Verdict: ✅ CLEAN**
 
 Key checks:
@@ -87,7 +87,7 @@ Flags: none
 ---
 
 ## T6 — LLM Behind Safe Interfaces
-**Commit:** `0a11ddb`  
+**Commit:** `0a11ddb`
 **Verdict: ✅ CLEAN**
 
 Key checks:
@@ -106,50 +106,62 @@ Flags: none
 ---
 
 ## T7 — Competition-period Paper Runner + Bitget Demo Adapter
-**Status: NOT YET STARTED — stopped for review**
+**Commit:** `ab7898e`
+**Verdict: ✅ CLEAN**
 
-### What T7 must get right (pre-brief checklist)
+Key checks:
+- CLI with `run --mode fixture|demo`, `--dry-run`, `--cycles`, `--output`
+- Demo adapter calls `bgc market --action candles --category USDT-FUTURES` for live data
+- `--paper-trading` on every order call, `--posSide long` for hedge mode
+- Paper log JSONL with all required fields (instrument, category, side, price, qty, status, risk gates, software version, config hash)
+- Manifest with actual timestamps, timezone, code commit, config hash
+- Both accepted and rejected cycles demonstrated
+- No rToken SPOT used as primary data; USDT-FUTURES throughout
+- 251 tests, ruff clean
 
-**Market data adapter:**
-- ✅ Confirmed: `bgc market --action candles --category USDT-FUTURES --symbol NVDAUSDT --interval 1D` returns data
-- ✅ Confirmed: same for AAPLUSDT, TSLAUSDT, METAUSDT
-- Category must be `USDT-FUTURES` (matches `MarketSnapshot.category` default)
+Flags: none
 
-**Bitget Demo order placement (confirmed working params):**
-```bash
-bgc --paper-trading order --action place \
-  --category USDT-FUTURES \
-  --symbol NVDAUSDT \
-  --side buy \
-  --orderType limit \
-  --price <price> \
-  --qty <qty> \
-  --timeInForce gtc \
-  --posSide long
-```
-- `--posSide long` is REQUIRED (account is in hedge mode) — without it: `Incorrect position open type`
-- `--paper-trading` flag REQUIRED on every write
+---
 
-**Bitget Demo cancel (confirmed working):**
-```bash
-bgc --paper-trading order --action cancel \
-  --category USDT-FUTURES \
-  --symbol NVDAUSDT \
-  --orderId <orderId from place response>
-```
+## Trust Layer (Tasks 1–8)
 
-**What must NOT appear in T7:**
-- No `category=SPOT` for orders
-- No `rAAPLUSDT`, `RAAPLUSDT`, or any r-prefix symbol as an order symbol
-- No order call without `--paper-trading`
-- No rToken SPOT candles used as primary market data input (use USDT-FUTURES candles)
-- No `place-reality-order` endpoint
+Implementation plan: `docs/plans/implementation-plan.md`
 
-**Output requirements:**
-- Writes to `artifacts/paper-trading/` (JSONL)
-- Each record: event_id, cycle_id, instrument, side, price, qty, pre/post balance, fees, slippage, status, risk gate results, software version
-- Rejected cycles also written with rejection reason
-- Manifest file: actual start/end timestamps, timezone, code commit, config hash
+### Trust-T1 — Exchange State Module
+**Commit:** `31fab34..7d8b33c`
+**Verdict: ✅ CLEAN** (after fix: order_id validation, classify tests)
+
+### Trust-T2 — State Reconciliation
+**Commit:** `7d8b33c..dfbb424`
+**Verdict: ✅ CLEAN**
+
+### Trust-T3 — Exchange Risk Gates
+**Commit:** `dfbb424..ccba429`
+**Verdict: ✅ CLEAN**
+
+### Trust-T4 — Enhanced Metrics
+**Commit:** `ccba429..8d2696f`
+**Verdict: ✅ CLEAN** (minor: negative turnover edge — fixed in final review)
+
+### Trust-T5 — Remove Silent LLM Fallback
+**Commit:** `8d2696f..ddb8d6a`
+**Verdict: ✅ CLEAN**
+
+### Trust-T6 — Separate Research/Execution Prices
+**Commit:** `ddb8d6a..6ab6ad9`
+**Verdict: ✅ CLEAN**
+
+### Trust-T7 — CLI Commands (status, history, explain)
+**Commit:** `6ab6ad9..47720e5`
+**Verdict: ✅ CLEAN** (minor: redundant imports, hardcoded path)
+
+### Trust-T8 — Wire Exchange Verification
+**Commit:** `47720e5..8c319d4`
+**Verdict: ✅ CLEAN** (minor: exception clause widened in final fix)
+
+### Final Review Fix
+**Commit:** `e51be25`
+Addressed: turnover abs-clamp, TimeoutExpired catch, pre-flight loud-fail, assert→TypeError
 
 ---
 
@@ -163,4 +175,5 @@ bgc --paper-trading order --action cancel \
 | T4 | ✅ Clean | +52 = 160 | Broker in-memory correct |
 | T5 | ✅ Clean | +30 = 190 | JSONL chain integrity |
 | T6 | ✅ Clean | +23 = 213 | LLM fully sandboxed |
-| T7 | ⏳ Pending | — | Pre-brief checklist above |
+| T7 | ✅ Clean | +38 = 251 | Paper runner + Demo adapter |
+| Trust 1–8 | ✅ Clean | +53 = 304 | Exchange verification, reconciliation, metrics, CLI |

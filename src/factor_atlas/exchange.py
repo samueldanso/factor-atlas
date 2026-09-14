@@ -61,7 +61,7 @@ def _run_bgc(args: list[str], paper_trading: bool = True) -> dict[str, Any]:
     if result.returncode != 0:
         action = args[0] if args else "unknown"
         raise RuntimeError(f"{action} failed: {result.stderr.strip()}")
-    return json.loads(result.stdout)
+    return dict(json.loads(result.stdout))
 
 
 def query_exchange_state(paper_trading: bool = True) -> ExchangeState:

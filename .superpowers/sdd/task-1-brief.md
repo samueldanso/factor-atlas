@@ -1,146 +1,411 @@
-# Task T1 Brief: Typed Contracts and Fixture Event Stream
+### Task 1: Exchange state module
 
-## Spec Section
-Technical spec → Core contracts (Factor hypothesis, Validation result, Paper order, Audit event)
+**Files:**
+- Create: `src/factor_atlas/exchange.py`
+- Create: `tests/test_exchange.py`
 
-## Scope
-Define all typed contracts for FactorAtlas and create fixture event streams for deterministic testing.
+**Interfaces:**
+- Consumes: `factor_atlas.config.CATEGORY` (`"USDT-FUTURES"`)
+- Produces:
+  - `ExchangeState` dataclass with fields: `balance: Decimal`, `positions: list[ExchangePosition]`, `pending_orders: list[ExchangeOrder]`, `queried_at: datetime`
+  - `ExchangePosition` dataclass with fields: `symbol: str`, `side: str`, `size: Decimal`, `entry_price: Decimal`, `unrealized_pnl: Decimal`
+  - `ExchangeOrder` dataclass with fields: `order_id: str`, `symbol: str`, `side: str`, `price: Decimal`, `qty: Decimal`, `status: str`
+  - `query_exchange_state(paper_trading: bool = True) -> ExchangeState`
+  - `query_order_status(order_id: str, paper_trading: bool = True) -> ExchangeOrder`
+  - `OrderVerificationStatus` — Literal type: `"verified_filled"`, `"verified_rejected"`, `"verified_cancelled"`, `"verified_partial"`, `"unverified"`, `"query_failed"`
 
-## Contracts Required
+- [ ] **Step 1: Write test for ExchangeState parsing from bgc JSON**
 
-### 1. MarketSnapshot
-- timestamp (datetime, UTC)
-- snapshot_id (UUID string)
-- instrument (string, must be in allowed set: AAPLUSDT, NVDAUSDT, TSLAUSDT, METAUSDT)
-- category: literal "USDT-FUTURES" 
-- ohlcv data: open, high, low, close, volume (all Decimal for precision)
-- source: literal "fixture" | "bitget-demo" | "bitget-signal"
-- Reject unknown instruments, missing timestamps
-
-### 2. FactorHypothesis
-- hypothesis_id (UUID string)
-- factor_name (string, must be in registered factor vocabulary — validated)
-- parameters (dict with parameter validation per factor)
-- lookback (int, positive, bounded)
-- instruments (list of valid instruments)
-- direction: literal "long" | "short"
-- entry_rule (string)
-- exit_rule (string)
-- rationale (string, non-empty)
-- created_at (datetime, UTC)
-- Reject unknown factor names, out-of-range parameters, empty instruments
-
-### 3. ValidationResult
-- validation_id (UUID string)
-- hypothesis_id (reference to FactorHypothesis)
-- snapshot_id (reference to MarketSnapshot)
-- train_window (tuple of start/end dates)
-- test_window (tuple of start/end dates)
-- observations (int, positive)
-- metrics: a nested model with:
-  - total_return (float, labeled "observed")
-  - sharpe_ratio (float, labeled "observed")
-  - sortino_ratio (float, labeled "observed")
-  - max_drawdown (float, labeled "observed")
-  - turnover (float, labeled "observed")
-  - fees (float, labeled "estimated")
-  - slippage (float, labeled "estimated")
-  - win_rate (float, labeled "observed")
-- Each metric carries a label: "observed" | "estimated" | "targeted"
-- passed (bool)
-- rejection_reasons (list of strings, empty when passed)
-- Reject if observations < minimum sample size threshold (configurable, default 20)
-
-### 4. TradeDecision
-- decision_id (UUID string)
-- cycle_id (UUID string)
-- hypothesis_id (reference)
-- instrument (valid instrument)
-- side: literal "buy" | "sell"
-- quantity (Decimal, positive, bounded)
-- price (Decimal, positive)
-- rationale (string, non-empty)
-- timestamp (datetime, UTC)
-
-### 5. PaperOrder
-- order_id (UUID string)
-- decision_id (reference to TradeDecision)
-- event_id (reference)
-- timestamp (datetime, UTC)
-- instrument (valid instrument)
-- category: literal "USDT-FUTURES"
-- side: literal "buy" | "sell"
-- price (Decimal, positive)
-- quantity (Decimal, positive)
-- notional (Decimal = price * quantity)
-- pre_balance (Decimal, non-negative)
-- post_balance (Decimal, non-negative)
-- fees (Decimal, non-negative, labeled "estimated")
-- slippage (Decimal, non-negative, labeled "estimated")
-- status: literal "filled" | "rejected" | "error"
-- rejection_reason (optional string)
-- fill_price (optional Decimal)
-
-### 6. AuditEvent
-- event_id (UUID string)
-- cycle_id (UUID string)
-- stage: literal "observe" | "propose" | "evaluate" | "decide" | "gate" | "execute" | "learn"
-- timestamp (datetime, UTC)
-- parent_event_id (optional UUID string — links to prior stage)
-- payload (dict — stage-specific data)
-- Append-only: events form a chain via parent_event_id
-
-### 7. RiskGateResult
-- gate_name (string)
-- passed (bool)
-- reason (string — always present, explains pass or fail)
-- value (optional float — the measured value)
-- threshold (optional float — the limit)
-
-## Fixtures Required
-
-Create deterministic fixture data under `src/factor_atlas/fixtures/`:
-- `events.py`: at least 2 fixture market snapshots (one that leads to an accepted cycle, one that leads to rejection)
-- `hypotheses.py`: at least 2 fixture hypotheses (one valid, one invalid/rejected)
-- Pre-built OHLCV data series (30+ bars) for AAPLUSDT fixture
-
-All fixtures must be:
-- Credential-free
-- Deterministic (same output every time)
-- Importable as Python objects
-
-## Allowed instrument universe (constant)
 ```python
-INSTRUMENTS = frozenset({"AAPLUSDT", "NVDAUSDT", "TSLAUSDT", "METAUSDT"})
-CATEGORY = "USDT-FUTURES"
+# tests/test_exchange.py
+"""Tests for the exchange state module — all bgc calls are mocked."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from decimal import Decimal
+from unittest.mock import patch
+
+import pytest
+
+from factor_atlas.exchange import (
+    ExchangeOrder,
+    ExchangePosition,
+    ExchangeState,
+    OrderVerificationStatus,
+    query_exchange_state,
+    query_order_status,
+)
+
+# Realistic bgc account_overview response
+_ACCOUNT_OVERVIEW_RESPONSE = json.dumps(
+    {
+        "data": {
+            "accountId": "123456",
+            "coin": [
+                {
+                    "coin": "USDT",
+                    "available": "48523.12",
+                    "frozen": "1200.00",
+                    "equity": "49723.12",
+                }
+            ],
+        }
+    }
+)
+
+# Realistic bgc position info response
+_POSITION_RESPONSE = json.dumps(
+    {
+        "data": [
+            {
+                "symbol": "AAPLUSDT",
+                "holdSide": "long",
+                "total": "2",
+                "openPriceAvg": "330.33",
+                "unrealizedPL": "-12.50",
+            },
+            {
+                "symbol": "METAUSDT",
+                "holdSide": "short",
+                "total": "1",
+                "openPriceAvg": "641.76",
+                "unrealizedPL": "8.20",
+            },
+        ]
+    }
+)
+
+# Realistic bgc order open response
+_OPEN_ORDERS_RESPONSE = json.dumps({"data": {"orderList": []}})
+
+# Realistic bgc order detail response
+_ORDER_DETAIL_FILLED = json.dumps(
+    {
+        "data": {
+            "orderId": "1483216288468062208",
+            "symbol": "AAPLUSDT",
+            "side": "buy",
+            "price": "330.33",
+            "size": "2",
+            "status": "filled",
+        }
+    }
+)
+
+_ORDER_DETAIL_REJECTED = json.dumps(
+    {
+        "data": {
+            "orderId": "999",
+            "symbol": "AAPLUSDT",
+            "side": "buy",
+            "price": "330.33",
+            "size": "2",
+            "status": "cancelled",
+        }
+    }
+)
+
+
+def _mock_subprocess_run(responses: dict[str, str]):
+    """Return a mock that maps bgc action keywords to canned responses."""
+
+    def _side_effect(cmd, **_kwargs):
+        cmd_str = " ".join(cmd)
+
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        r = Result()
+
+        for keyword, response in responses.items():
+            if keyword in cmd_str:
+                r.stdout = response
+                return r
+
+        r.returncode = 1
+        r.stderr = "unknown command"
+        return r
+
+    return _side_effect
+
+
+class TestQueryExchangeState:
+    def test_parses_balance_and_positions(self) -> None:
+        responses = {
+            "account_overview": _ACCOUNT_OVERVIEW_RESPONSE,
+            "position": _POSITION_RESPONSE,
+            "order": _OPEN_ORDERS_RESPONSE,
+        }
+        with patch(
+            "factor_atlas.exchange.subprocess.run",
+            side_effect=_mock_subprocess_run(responses),
+        ):
+            state = query_exchange_state()
+
+        assert state.balance == Decimal("48523.12")
+        assert len(state.positions) == 2
+        assert state.positions[0].symbol == "AAPLUSDT"
+        assert state.positions[0].side == "long"
+        assert state.positions[0].size == Decimal("2")
+        assert state.positions[0].entry_price == Decimal("330.33")
+        assert len(state.pending_orders) == 0
+        assert state.queried_at is not None
+
+    def test_raises_on_account_overview_failure(self) -> None:
+        def _fail(cmd, **_kwargs):
+            class Result:
+                returncode = 1
+                stdout = ""
+                stderr = "auth failed"
+
+            return Result()
+
+        with patch("factor_atlas.exchange.subprocess.run", side_effect=_fail):
+            with pytest.raises(RuntimeError, match="account_overview failed"):
+                query_exchange_state()
+
+    def test_empty_positions_returns_empty_list(self) -> None:
+        responses = {
+            "account_overview": _ACCOUNT_OVERVIEW_RESPONSE,
+            "position": json.dumps({"data": []}),
+            "order": _OPEN_ORDERS_RESPONSE,
+        }
+        with patch(
+            "factor_atlas.exchange.subprocess.run",
+            side_effect=_mock_subprocess_run(responses),
+        ):
+            state = query_exchange_state()
+        assert state.positions == []
+        assert state.balance == Decimal("48523.12")
+
+
+class TestQueryOrderStatus:
+    def test_filled_order(self) -> None:
+        with patch(
+            "factor_atlas.exchange.subprocess.run",
+            side_effect=_mock_subprocess_run(
+                {"order": _ORDER_DETAIL_FILLED}
+            ),
+        ):
+            order = query_order_status("1483216288468062208")
+        assert order.status == "filled"
+        assert order.order_id == "1483216288468062208"
+
+    def test_cancelled_order(self) -> None:
+        with patch(
+            "factor_atlas.exchange.subprocess.run",
+            side_effect=_mock_subprocess_run(
+                {"order": _ORDER_DETAIL_REJECTED}
+            ),
+        ):
+            order = query_order_status("999")
+        assert order.status == "cancelled"
+
+    def test_network_failure_returns_query_failed(self) -> None:
+        def _fail(cmd, **_kwargs):
+            raise OSError("Network unreachable")
+
+        with patch("factor_atlas.exchange.subprocess.run", side_effect=_fail):
+            with pytest.raises(OSError):
+                query_order_status("123")
 ```
 
-## Files to create
-- `src/factor_atlas/__init__.py`
-- `src/factor_atlas/contracts.py` — all Pydantic models
-- `src/factor_atlas/config.py` — constants (instruments, category, thresholds)
-- `src/factor_atlas/fixtures/__init__.py`
-- `src/factor_atlas/fixtures/events.py` — fixture market snapshots and OHLCV
-- `src/factor_atlas/fixtures/hypotheses.py` — fixture hypotheses
-- `tests/__init__.py`
-- `tests/test_contracts.py` — validation tests
+- [ ] **Step 2: Run tests to verify they fail**
 
-## Acceptance Criteria
-1. Invalid IDs, instruments, timestamps, quantities, and factor names fail validation with clear error messages
-2. All fixtures are credential-free and importable
-3. Fixture serialization is deterministic (same JSON output every run)
-4. `uv run pytest tests/test_contracts.py` passes
-5. `uv run ruff check .` clean
-6. `uv run ruff format --check .` clean
-7. `uv run mypy src/ tests/` clean (or only expected library stubs)
+Run: `uv run pytest tests/test_exchange.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'factor_atlas.exchange'`
 
-## Credential mode
-Unused — pure fixtures, no network, no API.
+- [ ] **Step 3: Implement exchange module**
 
-## Verification commands
+```python
+# src/factor_atlas/exchange.py
+"""Exchange state queries via bgc CLI — wraps subprocess calls."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Literal
+
+OrderVerificationStatus = Literal[
+    "verified_filled",
+    "verified_rejected",
+    "verified_cancelled",
+    "verified_partial",
+    "unverified",
+    "query_failed",
+]
+
+
+@dataclass(frozen=True)
+class ExchangePosition:
+    symbol: str
+    side: str
+    size: Decimal
+    entry_price: Decimal
+    unrealized_pnl: Decimal
+
+
+@dataclass(frozen=True)
+class ExchangeOrder:
+    order_id: str
+    symbol: str
+    side: str
+    price: Decimal
+    qty: Decimal
+    status: str
+
+
+@dataclass
+class ExchangeState:
+    balance: Decimal = Decimal(0)
+    positions: list[ExchangePosition] = field(default_factory=list)
+    pending_orders: list[ExchangeOrder] = field(default_factory=list)
+    queried_at: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
+
+
+def _run_bgc(args: list[str], paper_trading: bool = True) -> dict:
+    """Run a bgc command and return parsed JSON. Raises RuntimeError on failure."""
+    cmd = ["bgc"]
+    if paper_trading:
+        cmd.append("--paper-trading")
+    cmd.extend(args)
+
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=30, check=False
+    )
+    if result.returncode != 0:
+        action = args[0] if args else "unknown"
+        raise RuntimeError(f"{action} failed: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
+def query_exchange_state(paper_trading: bool = True) -> ExchangeState:
+    """Query account balance, positions, and pending orders from Bitget."""
+    # Balance
+    acct = _run_bgc(
+        ["account_overview", "--category", "USDT-FUTURES"],
+        paper_trading=paper_trading,
+    )
+    coins = acct.get("data", {}).get("coin", [])
+    balance = Decimal("0")
+    for c in coins:
+        if c.get("coin") == "USDT":
+            balance = Decimal(c.get("available", "0"))
+            break
+
+    # Positions
+    pos_raw = _run_bgc(
+        ["position", "--action", "info", "--category", "USDT-FUTURES"],
+        paper_trading=paper_trading,
+    )
+    positions: list[ExchangePosition] = []
+    for p in pos_raw.get("data", []):
+        positions.append(
+            ExchangePosition(
+                symbol=p["symbol"],
+                side=p.get("holdSide", "long"),
+                size=Decimal(p.get("total", "0")),
+                entry_price=Decimal(p.get("openPriceAvg", "0")),
+                unrealized_pnl=Decimal(p.get("unrealizedPL", "0")),
+            )
+        )
+
+    # Pending orders
+    orders_raw = _run_bgc(
+        ["order", "--action", "open", "--category", "USDT-FUTURES"],
+        paper_trading=paper_trading,
+    )
+    pending: list[ExchangeOrder] = []
+    order_list = orders_raw.get("data", {})
+    if isinstance(order_list, dict):
+        order_list = order_list.get("orderList", [])
+    for o in (order_list or []):
+        pending.append(
+            ExchangeOrder(
+                order_id=o.get("orderId", ""),
+                symbol=o.get("symbol", ""),
+                side=o.get("side", ""),
+                price=Decimal(o.get("price", "0")),
+                qty=Decimal(o.get("size", o.get("qty", "0"))),
+                status=o.get("status", "unknown"),
+            )
+        )
+
+    return ExchangeState(
+        balance=balance,
+        positions=positions,
+        pending_orders=pending,
+        queried_at=datetime.now(tz=UTC),
+    )
+
+
+def query_order_status(
+    order_id: str, paper_trading: bool = True
+) -> ExchangeOrder:
+    """Query a single order's status. Note: detail action does not take --category."""
+    raw = _run_bgc(
+        ["order", "--action", "detail", "--orderId", order_id],
+        paper_trading=paper_trading,
+    )
+    d = raw.get("data", {})
+    return ExchangeOrder(
+        order_id=d.get("orderId", order_id),
+        symbol=d.get("symbol", ""),
+        side=d.get("side", ""),
+        price=Decimal(d.get("price", "0")),
+        qty=Decimal(d.get("size", d.get("qty", "0"))),
+        status=d.get("status", "unknown"),
+    )
+
+
+def classify_order_status(status: str) -> OrderVerificationStatus:
+    """Map a bgc order status string to our verification enum."""
+    status_lower = status.lower()
+    if status_lower == "filled":
+        return "verified_filled"
+    if status_lower in ("cancelled", "canceled"):
+        return "verified_cancelled"
+    if status_lower in ("rejected", "failed"):
+        return "verified_rejected"
+    if status_lower in ("partial", "partially_filled", "partial_fill"):
+        return "verified_partial"
+    return "unverified"
+
+
+__all__ = [
+    "ExchangeOrder",
+    "ExchangePosition",
+    "ExchangeState",
+    "OrderVerificationStatus",
+    "classify_order_status",
+    "query_exchange_state",
+    "query_order_status",
+]
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_exchange.py -v`
+Expected: all tests PASS
+
+- [ ] **Step 5: Run full suite and lint**
+
+Run: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+Expected: all pass
+
+- [ ] **Step 6: Commit**
+
 ```bash
-uv run pytest tests/test_contracts.py -v
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src/ tests/
+git add src/factor_atlas/exchange.py tests/test_exchange.py
+git commit -m "feat(exchange): add bgc exchange state query module"
 ```
+
+---

@@ -1,40 +1,28 @@
-# Task 8 Report — Runnable Demo and Submission Packaging
+# Task 8 Report: Wire exchange verification into runner
 
-## Status: COMPLETE
-
-## Changes
-
-### Created
-- `docs/runbook.md` — operational guide: fixture demo, paper runner, log inspection, troubleshooting
-- `docs/demo-script.md` — step-by-step 3-minute demo video script with narration cues
-
-### Modified
-- `README.md` — replaced placeholder with full submission README: quick start, architecture, CLI, LLM disclosure, evidence, safety
-- `src/factor_atlas/__init__.py` — added `__version__`, expanded public API with `EXECUTION_INSTRUMENTS`, `RESEARCH_INSTRUMENTS`
+## Status: DONE
 
 ## Commit
-- `922df3b` — `docs: add README, runbook, and demo script for submission`
+`8c319d4` — `feat(runner): wire exchange verification, reconciliation, and pre-flight`
 
-## Verification
+## Files Modified
+- `src/factor_atlas/orchestrator.py` — added `exchange_state: object | None = None` param to both `run_cycle` and `run_cycles`; pass it through to `run_gates` keyword arg
+- `src/factor_atlas/runner.py` — (1) pre-flight exchange query + reconciliation after `_load_positions_state` (demo only, wrapped in broad Exception catch); (2) pass `exchange_state` to `run_cycles`; (3) order verification loop after bgc entry placement; (4) `verification_status` field in all open-cycle paper log records ("not_applicable" in fixture, classify result or "query_failed" in demo)
+- `tests/test_runner.py` — added `TestOrderVerification` class with two tests: checks `verification_status` is absent/None or "not_applicable" for all records, and that open-type records specifically have "not_applicable" in fixture mode
 
-| Check | Result |
-|-------|--------|
-| `uv run pytest tests/ -q` | 250 passed (0.74s) |
-| `uv run ruff check .` | All checks passed |
-| `uv run ruff format --check .` | 65 files already formatted |
-| `uv run mypy src/ tests/` | Success: no issues found in 37 source files |
-| `uv run python -m factor_atlas run --dry-run` | Config valid, prints instruments + risk config |
-| `uv run python -m factor_atlas run --mode fixture --cycles 2` | 2 cycles, 1 accepted, 1 rejected, paper logs written |
-| Credential scan | No credentials in committed files |
+## Test Summary
+- 304 tests pass total (up from 302; 2 new tests added)
+- ruff check clean
+- ruff format clean
 
-## Acceptance Criteria
-
-1. README contains all required sections — done
-2. `uv sync && uv run pytest` from clean checkout — verified (250 pass)
-3. `uv run python -m factor_atlas run --mode fixture --cycles 2` produces paper logs — verified
-4. All 250 tests still pass — verified
-5. Ruff, format, mypy clean — verified
-6. No credentials in any committed file — verified
+## Acceptance Criteria Verified
+1. Pre-flight exchange query runs in demo mode — implemented after `_load_positions_state`, wrapped in `except Exception` so failures are non-fatal
+2. Reconciliation divergences printed to stderr — implemented via `reconcile_positions`, iterates and prints each `Divergence`
+3. `exchange_state` passed to orchestrator and through to `run_gates` — added param to `run_cycle` and `run_cycles`, threaded through
+4. Order verification after placement — loops over `bgc_order_ids`, calls `query_order_status` + `classify_order_status`, stores per cycle_id
+5. `verification_status` in paper log — "not_applicable" in fixture mode; classify result or "query_failed" in demo mode
+6. Fixture mode makes no exchange calls — pre-flight and verification blocks both gated on `mode == "demo"`
+7. Exchange failures non-fatal — pre-flight uses broad `except Exception`; verification uses `except (RuntimeError, OSError, ValueError)`
 
 ## Concerns
-- None. All acceptance criteria met.
+- The pre-flight broad `except Exception` (with `noqa: BLE001`) is intentional: bgc can return structurally unexpected responses (e.g., `data` as a string vs list), producing `TypeError`/`KeyError` that shouldn't crash the session. Narrowing would require patching `exchange.py` parsing to be defensive, which is out of scope for this task.

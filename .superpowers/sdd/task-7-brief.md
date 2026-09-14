@@ -1,233 +1,370 @@
-# Task T7 Brief: Competition-Period Paper Runner + Bitget Demo Adapter
+### Task 7: CLI commands — status, history, explain
 
-## Spec Section
-Technical spec → Competition-period paper run; tasks/plan.md T7
+**Files:**
+- Modify: `src/factor_atlas/__main__.py` (add subcommands)
+- Create: `src/factor_atlas/cli_commands.py` (command implementations)
+- Create: `tests/test_cli_commands.py`
 
-## Scope
-1. Add a CLI entry point (`__main__.py`) with `run` and `demo` subcommands
-2. Add a Bitget Demo adapter for market data and paper-order submission
-3. Add instrument normalization (rToken research → stock perp execution)
-4. Add the competition-period paper runner that writes append-only JSONL under `artifacts/paper-trading/`
-5. Add a paper-run manifest with timestamps, timezone, commit, config hash
+**Interfaces:**
+- Consumes: `compute_metrics` from `metrics.py`, `BrokerState`/`OpenPosition`/`ClosedTrade` from `broker.py`, `_load_positions_state` from `runner.py`
+- Produces:
+  - `cmd_status(artifacts_dir: Path) -> str` — returns formatted status string
+  - `cmd_history(artifacts_dir: Path) -> str` — returns formatted history string
+  - `cmd_explain(run_id: str, artifacts_dir: Path) -> str` — returns formatted explanation string
 
-## Dependencies
-- T1-T6 complete (213 tests)
-- `src/factor_atlas/config.py` — RESEARCH_TO_EXECUTION, RESEARCH_INSTRUMENTS, EXECUTION_INSTRUMENTS
-- `src/factor_atlas/orchestrator.py` — run_cycle, run_cycles, CycleResult
-- `src/factor_atlas/audit.py` — AuditLogger
-- `src/factor_atlas/broker.py` — BrokerState
-
-## Architecture
-
-### CLI Entry Point (`src/factor_atlas/__main__.py`)
-```python
-"""Factor Atlas CLI — `uv run python -m factor_atlas <command>`"""
-
-# Commands:
-# run          — run the full autonomous loop (fixture or demo mode)
-# run --mode fixture    — deterministic fixture run (default, no credentials)
-# run --mode demo       — Bitget Demo paper trading (requires credentials)
-# run --dry-run         — validate config and exit without executing
-# run --cycles N        — number of cycles (default: 2 for fixture, continuous for demo)
-# run --output PATH     — output directory for paper logs (default: artifacts/paper-trading/)
-```
-
-Use `argparse` only (no click/typer dependency).
-
-### Bitget Demo Adapter (`src/factor_atlas/adapters/__init__.py`, `src/factor_atlas/adapters/bitget_demo.py`)
+- [ ] **Step 1: Write tests for CLI commands**
 
 ```python
-class BitgetDemoAdapter:
-    """Adapter for Bitget Demo USDT-FUTURES stock perpetuals.
+# tests/test_cli_commands.py
+"""Tests for status, history, and explain CLI commands."""
 
-    Uses httpx for REST calls to Bitget's Demo API.
-    All calls use paper-trading mode.
-    """
+from __future__ import annotations
 
-    def __init__(self, api_key: str, secret_key: str, passphrase: str): ...
+import json
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
 
-    async def get_market_snapshot(self, instrument: str) -> MarketSnapshot:
-        """Fetch latest ticker + recent candles for a USDT-FUTURES instrument."""
-        ...
+from factor_atlas.cli_commands import cmd_explain, cmd_history, cmd_status
 
-    async def place_paper_order(
-        self, instrument: str, side: str, quantity: Decimal, price: Decimal
-    ) -> dict:
-        """Place a paper order on Bitget Demo. Returns order response dict."""
-        ...
 
-    async def get_account_balance(self) -> Decimal:
-        """Get Demo account USDT balance."""
-        ...
+def _make_artifacts(tmp_path: Path) -> Path:
+    """Create minimal fixture artifacts for testing."""
+    artifacts = tmp_path / "artifacts" / "paper-trading"
+    artifacts.mkdir(parents=True)
+
+    # positions_state.json
+    (artifacts / "positions_state.json").write_text(
+        json.dumps(
+            {
+                "open_positions": [
+                    {
+                        "instrument": "AAPLUSDT",
+                        "side": "buy",
+                        "entry_price": "330.33",
+                        "quantity": "2",
+                        "entry_time": "2026-09-14T10:00:00+00:00",
+                        "hypothesis_id": "hyp-1",
+                        "factor_name": "momentum",
+                        "cycle_id": "cycle-1",
+                    }
+                ],
+                "closed_trades": [
+                    {
+                        "instrument": "METAUSDT",
+                        "side": "sell",
+                        "entry_price": "641.76",
+                        "exit_price": "630.00",
+                        "quantity": "1",
+                        "pnl": "11.76",
+                        "pnl_pct": 0.0183,
+                        "entry_time": "2026-09-13T10:00:00+00:00",
+                        "exit_time": "2026-09-13T18:00:00+00:00",
+                        "hold_duration_hours": 8.0,
+                        "won": True,
+                        "factor_name": "mean_reversion",
+                    }
+                ],
+                "last_updated": "2026-09-14T10:05:00+00:00",
+            }
+        )
+    )
+
+    # A run directory with manifest and paper_log
+    run_dir = artifacts / "test-run-123"
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "test-run-123",
+                "start_timestamp": "2026-09-14T10:00:00+00:00",
+                "end_timestamp": "2026-09-14T10:01:00+00:00",
+                "mode": "fixture",
+                "cycles_completed": 2,
+                "accepted_count": 1,
+                "rejected_count": 1,
+                "llm_provider": "fixture",
+                "llm_model": "fixture",
+                "llm_mode": "fixture",
+                "performance_metrics": {
+                    "total_trades": 1,
+                    "win_rate": 1.0,
+                    "sharpe_ratio": 0.0,
+                    "sortino_ratio": 0.0,
+                    "max_drawdown": 0.0,
+                    "total_pnl": "11.76",
+                },
+            }
+        )
+    )
+    (run_dir / "paper_log.jsonl").write_text(
+        json.dumps(
+            {
+                "record_type": "open",
+                "instrument": "AAPLUSDT",
+                "category": "USDT-FUTURES",
+                "side": "buy",
+                "status": "filled",
+                "factor_name": "momentum",
+                "rationale": "Strong momentum signal",
+                "risk_gate_results": [
+                    {"gate_name": "factor_allowlist", "passed": True, "reason": "ok"}
+                ],
+            }
+        )
+        + "\n"
+    )
+
+    return artifacts
+
+
+class TestCmdStatus:
+    def test_shows_open_positions(self, tmp_path: Path) -> None:
+        artifacts = _make_artifacts(tmp_path)
+        output = cmd_status(artifacts)
+        assert "AAPLUSDT" in output
+        assert "momentum" in output
+
+    def test_shows_closed_trade_metrics(self, tmp_path: Path) -> None:
+        artifacts = _make_artifacts(tmp_path)
+        output = cmd_status(artifacts)
+        assert "1" in output  # total trades
+        assert "100" in output or "1.0" in output  # win rate
+
+
+class TestCmdHistory:
+    def test_lists_sessions(self, tmp_path: Path) -> None:
+        artifacts = _make_artifacts(tmp_path)
+        output = cmd_history(artifacts)
+        assert "test-run-123" in output
+
+
+class TestCmdExplain:
+    def test_explains_run(self, tmp_path: Path) -> None:
+        artifacts = _make_artifacts(tmp_path)
+        output = cmd_explain("test-run-123", artifacts)
+        assert "AAPLUSDT" in output
+        assert "momentum" in output
+
+    def test_unknown_run_id(self, tmp_path: Path) -> None:
+        artifacts = _make_artifacts(tmp_path)
+        output = cmd_explain("nonexistent", artifacts)
+        assert "not found" in output.lower()
 ```
 
-**IMPORTANT:** The adapter must:
-- Only call Bitget Demo endpoints (not live)
-- Use USDT-FUTURES category for orders
-- Handle HTTP errors gracefully (return error status, not crash)
-- Be fully replaceable by fixture data (tests never need credentials)
+- [ ] **Step 2: Run tests to verify they fail**
 
-### Instrument Normalization (`src/factor_atlas/adapters/normalize.py`)
+Run: `uv run pytest tests/test_cli_commands.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'factor_atlas.cli_commands'`
+
+- [ ] **Step 3: Implement cli_commands.py**
+
 ```python
-def research_to_execution(instrument: str) -> str:
-    """Map rToken research instrument to stock perp execution instrument.
+# src/factor_atlas/cli_commands.py
+"""CLI command implementations for status, history, and explain."""
 
-    RAAPLUSDT -> AAPLUSDT, RNVDAUSDT -> NVDAUSDT, etc.
-    Execution instruments pass through unchanged.
-    """
-    from factor_atlas.config import RESEARCH_TO_EXECUTION, EXECUTION_INSTRUMENTS
+from __future__ import annotations
 
-    if instrument in EXECUTION_INSTRUMENTS:
-        return instrument
-    return RESEARCH_TO_EXECUTION.get(instrument, instrument)
+import json
+from pathlib import Path
+
+from factor_atlas.broker import BrokerState, ClosedTrade, OpenPosition
+from factor_atlas.metrics import compute_metrics
+
+
+def _load_state(artifacts_dir: Path) -> BrokerState:
+    state = BrokerState()
+    state_path = artifacts_dir / "positions_state.json"
+    if not state_path.exists():
+        return state
+    try:
+        raw = json.loads(state_path.read_text())
+        for d in raw.get("open_positions", []):
+            pos = OpenPosition.from_dict(d)
+            state.open_positions[pos.instrument] = pos
+        for d in raw.get("closed_trades", []):
+            state.closed_trades.append(ClosedTrade.from_dict(d))
+    except (json.JSONDecodeError, KeyError, ValueError):
+        pass
+    return state
+
+
+def _find_runs(artifacts_dir: Path) -> list[dict]:
+    runs = []
+    for d in sorted(artifacts_dir.iterdir()):
+        manifest_path = d / "manifest.json"
+        if d.is_dir() and manifest_path.exists():
+            try:
+                runs.append(json.loads(manifest_path.read_text()))
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return runs
+
+
+def cmd_status(artifacts_dir: Path) -> str:
+    """Build status output from local state."""
+    state = _load_state(artifacts_dir)
+    metrics = compute_metrics(state.closed_trades)
+    runs = _find_runs(artifacts_dir)
+
+    lines = ["FactorAtlas Status", ""]
+
+    if state.open_positions:
+        lines.append(f"  Open positions ({len(state.open_positions)}):")
+        for inst, pos in state.open_positions.items():
+            lines.append(
+                f"    {inst}: {pos.side}, entry=${pos.entry_price}, "
+                f"qty={pos.quantity}, factor={pos.factor_name}"
+            )
+    else:
+        lines.append("  Open positions: none")
+
+    lines.append("")
+    n = metrics["total_trades"]
+    lines.append(f"  Closed trades: {n}")
+    if n > 0:
+        lines.append(f"    Win rate: {metrics['win_rate']}")
+        lines.append(f"    Sharpe: {metrics['sharpe_ratio']}")
+        lines.append(f"    Sortino: {metrics['sortino_ratio']}")
+        lines.append(f"    Max drawdown: {metrics['max_drawdown']}")
+        lines.append(f"    Total PnL: {metrics['total_pnl']}")
+        lines.append(f"    Avg hold: {metrics['avg_hold_hours']}h")
+
+    lines.append("")
+    lines.append(f"  Sessions: {len(runs)}")
+    if runs:
+        last = runs[-1]
+        lines.append(
+            f"  Last run: {last.get('start_timestamp', 'unknown')} ({last.get('run_id', '')[:12]})"
+        )
+    lines.append(f"  Logs: {artifacts_dir}")
+
+    return "\n".join(lines)
+
+
+def cmd_history(artifacts_dir: Path) -> str:
+    """Build history output listing all sessions."""
+    runs = _find_runs(artifacts_dir)
+    if not runs:
+        return "No sessions found."
+
+    lines = [f"FactorAtlas History — {len(runs)} session(s)", ""]
+    for run in runs:
+        rid = run.get("run_id", "unknown")
+        ts = run.get("start_timestamp", "unknown")
+        mode = run.get("mode", "unknown")
+        accepted = run.get("accepted_count", 0)
+        rejected = run.get("rejected_count", 0)
+        perf = run.get("performance_metrics", {})
+        pnl = perf.get("total_pnl", "0")
+        lines.append(
+            f"  {rid[:12]}  {ts}  mode={mode}  "
+            f"accepted={accepted} rejected={rejected}  pnl={pnl}"
+        )
+
+    return "\n".join(lines)
+
+
+def cmd_explain(run_id: str, artifacts_dir: Path) -> str:
+    """Build explanation output for a single run."""
+    run_dir = artifacts_dir / run_id
+    if not run_dir.exists():
+        return f"Run '{run_id}' not found in {artifacts_dir}"
+
+    manifest_path = run_dir / "manifest.json"
+    paper_log_path = run_dir / "paper_log.jsonl"
+
+    if not manifest_path.exists():
+        return f"Run '{run_id}' has no manifest."
+
+    manifest = json.loads(manifest_path.read_text())
+    lines = [
+        f"Session {manifest.get('run_id', run_id)[:12]} "
+        f"({manifest.get('start_timestamp', 'unknown')})",
+        f"  LLM: {manifest.get('llm_model', 'unknown')} ({manifest.get('llm_provider', 'unknown')})",
+        f"  Mode: {manifest.get('mode', 'unknown')}",
+        "",
+    ]
+
+    if paper_log_path.exists():
+        for line in paper_log_path.read_text().strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            inst = record.get("instrument", "unknown")
+            status = record.get("status", "unknown")
+            factor = record.get("factor_name", "")
+            rationale = record.get("rationale", "")
+            side = record.get("side", "")
+
+            lines.append(f"  {inst}:")
+            lines.append(f"    Status: {status}, Side: {side}, Factor: {factor}")
+            if rationale:
+                lines.append(f"    Rationale: {rationale[:120]}")
+
+            gates = record.get("risk_gate_results", [])
+            if gates:
+                passed = sum(1 for g in gates if g.get("passed"))
+                lines.append(f"    Gates: {passed}/{len(gates)} passed")
+            lines.append("")
+
+    summary = manifest.get("performance_metrics", {})
+    lines.append(
+        f"  Summary: {manifest.get('accepted_count', 0)} accepted, "
+        f"{manifest.get('rejected_count', 0)} rejected, "
+        f"PnL={summary.get('total_pnl', '0')}"
+    )
+
+    return "\n".join(lines)
+
+
+__all__ = ["cmd_explain", "cmd_history", "cmd_status"]
 ```
 
-### Paper Run Output
+- [ ] **Step 4: Wire commands into __main__.py**
 
-Each run writes to `artifacts/paper-trading/<run_id>/`:
-- `paper_log.jsonl` — append-only JSONL of PaperOrder records
-- `audit_log.jsonl` — full audit trail (AuditLogger output)
-- `manifest.json` — run metadata
+Add subparsers for `status`, `history`, `explain` in `_build_parser()` and handle them in `main()`:
 
-#### Paper log record format (one JSON per line):
-Each line = PaperOrder.model_dump(mode="json") + additional fields:
-```json
-{
-    "order_id": "...",
-    "decision_id": "...",
-    "event_id": "...",
-    "timestamp": "2026-09-12T10:00:00+00:00",
-    "instrument": "AAPLUSDT",
-    "category": "USDT-FUTURES",
-    "side": "buy",
-    "price": "152.50",
-    "quantity": "10",
-    "notional": "1525.00",
-    "pre_balance": "100000.00",
-    "post_balance": "99998.24",
-    "fees": "1.525",
-    "slippage": "0.7625",
-    "status": "filled",
-    "fill_price": "152.50",
-    "cycle_id": "...",
-    "hypothesis_id": "...",
-    "factor_name": "momentum",
-    "risk_gate_results": [{"gate_name": "...", "passed": true, "reason": "..."}],
-    "validation_sharpe": 1.23,
-    "rationale": "...",
-    "software_version": "0.1.0",
-    "config_hash": "abc123..."
-}
-```
-
-For rejected cycles, include:
-```json
-{
-    "status": "rejected",
-    "rejection_reason": "daily_loss_cap exceeded",
-    ...same fields...
-}
-```
-
-#### Manifest format (`manifest.json`):
-```json
-{
-    "run_id": "...",
-    "start_timestamp": "2026-09-12T10:00:00+00:00",
-    "end_timestamp": "2026-09-12T10:05:00+00:00",
-    "timezone": "UTC",
-    "mode": "fixture",
-    "instruments": ["RAAPLUSDT"],
-    "execution_instruments": ["AAPLUSDT"],
-    "cycles_completed": 2,
-    "accepted_count": 1,
-    "rejected_count": 1,
-    "code_commit": "abc1234",
-    "config_hash": "sha256:...",
-    "software_version": "0.1.0"
-}
-```
-
-### Runner (`src/factor_atlas/runner.py`)
 ```python
-def run_paper_session(
-    mode: str = "fixture",  # "fixture" or "demo"
-    cycles: int = 2,
-    output_dir: Path | None = None,  # default: artifacts/paper-trading/
-) -> Path:
-    """Run a paper-trading session and write results.
+# In _build_parser(), after the run_parser block:
+    sub.add_parser("status", help="Show system state and metrics.")
 
-    Returns the path to the run output directory.
-    """
+    sub.add_parser("history", help="List all paper-trading sessions.")
+
+    explain_parser = sub.add_parser("explain", help="Explain a session's decisions.")
+    explain_parser.add_argument("run_id", help="Run ID to explain.")
+
+# In main(), after the run command block:
+    if args.command == "status":
+        from factor_atlas.cli_commands import cmd_status
+        print(cmd_status(Path("artifacts/paper-trading")))
+        return 0
+
+    if args.command == "history":
+        from factor_atlas.cli_commands import cmd_history
+        print(cmd_history(Path("artifacts/paper-trading")))
+        return 0
+
+    if args.command == "explain":
+        from factor_atlas.cli_commands import cmd_explain
+        print(cmd_explain(args.run_id, Path("artifacts/paper-trading")))
+        return 0
 ```
 
-For fixture mode:
-- Use existing fixture snapshots and OHLCV data
-- Use FixtureProposer and FixtureDecisionProvider
-- Use in-memory BrokerState
-- Write output to artifacts/paper-trading/<run_id>/
+- [ ] **Step 5: Run all tests**
 
-For demo mode:
-- Use BitgetDemoAdapter for market data
-- Use in-memory BrokerState (paper orders tracked locally)
-- Optionally submit paper orders via the adapter
-- Write output to artifacts/paper-trading/<run_id>/
+Run: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+Expected: all pass
 
-## Config hash
-Compute from a deterministic serialization of RiskConfig + factor vocabulary + instruments:
-```python
-import hashlib, json
-config_data = json.dumps({"risk": risk_config_dict, "factors": sorted(FACTOR_VOCABULARY), ...}, sort_keys=True)
-config_hash = "sha256:" + hashlib.sha256(config_data.encode()).hexdigest()[:16]
-```
+- [ ] **Step 6: Commit**
 
-## Git commit hash
-```python
-import subprocess
-
-result = subprocess.run(
-    ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True
-)
-commit = result.stdout.strip() or "unknown"
-```
-
-## Files to create
-- `src/factor_atlas/__main__.py` — CLI entry point
-- `src/factor_atlas/runner.py` — run_paper_session
-- `src/factor_atlas/adapters/__init__.py` — exports
-- `src/factor_atlas/adapters/bitget_demo.py` — Bitget Demo adapter (httpx)
-- `src/factor_atlas/adapters/normalize.py` — instrument normalization
-- `tests/test_runner.py` — runner tests (fixture mode only)
-- `tests/test_adapters.py` — adapter tests with mocked HTTP
-
-## Acceptance Criteria
-1. `uv run python -m factor_atlas run --dry-run` validates config and exits cleanly
-2. `uv run python -m factor_atlas run --mode fixture --cycles 2` produces:
-   - `artifacts/paper-trading/<run_id>/paper_log.jsonl` with ≥2 records
-   - `artifacts/paper-trading/<run_id>/audit_log.jsonl` with audit events
-   - `artifacts/paper-trading/<run_id>/manifest.json` with required fields
-3. Paper log includes both accepted and rejected cycles
-4. Each paper log record has all required fields (timestamp, instrument, category, direction, price, quantity, balance, fees, risk gates, config hash, commit)
-5. Bitget Demo adapter handles missing credentials gracefully (ValueError, not crash)
-6. Adapter tests use mocked HTTP (no real API calls in tests)
-7. Fixture mode works without any credentials
-8. All prior tests still pass (213)
-9. `uv run ruff check .` clean
-10. `uv run ruff format --check .` clean
-11. `uv run mypy src/ tests/` clean
-
-## Credential mode
-Tests: Unused (mocked HTTP)
-CLI fixture run: Unused
-CLI demo run: Demo paper-trading (reads from env BITGET_API_KEY, BITGET_SECRET_KEY, BITGET_PASSPHRASE)
-
-## Verification commands
 ```bash
-uv run pytest tests/test_runner.py tests/test_adapters.py -v
-uv run pytest tests/ -v
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src/ tests/
-uv run python -m factor_atlas run --dry-run
-uv run python -m factor_atlas run --mode fixture --cycles 2
+git add src/factor_atlas/cli_commands.py src/factor_atlas/__main__.py tests/test_cli_commands.py
+git commit -m "feat(cli): add status, history, and explain commands"
 ```
+
+---

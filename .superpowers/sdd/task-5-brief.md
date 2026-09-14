@@ -1,110 +1,106 @@
-# Task T5 Brief: Auditable Cycles and Deterministic Replay
+### Task 5: Remove silent LLM fallback and add manifest fields
 
-## Spec Section
-Technical spec → Audit event (append-only JSON Lines); tasks/plan.md T5
+**Files:**
+- Modify: `src/factor_atlas/runner.py` (lines 716-728 — LLM provider selection)
+- Modify: `src/factor_atlas/runner.py` (`_build_manifest` — add llm_provider, llm_model, llm_mode, account, environment fields)
+- Add tests to: `tests/test_runner.py`
 
-## Scope
-Write append-only JSONL records linking event, hypothesis, validation, decision, gates, execution/rejection, and next-cycle summary. Implement deterministic replay verification.
+**Interfaces:**
+- Consumes: `BedrockProvider`, `FixtureLLMProvider` from `factor_atlas.llm`
+- Produces: updated `_build_manifest()` that includes `llm_provider`, `llm_model`, `llm_mode`, `account`, `environment` fields. Demo mode raises `RuntimeError` if BedrockProvider fails (no fallback).
 
-## Dependencies
-- T1: AuditEvent contract
-- T3: CycleResult
-- T4: RiskGateResult, PaperOrder, BrokerState
+- [ ] **Step 1: Write test for demo mode raising on LLM failure**
 
-## Audit System
-
-### AuditLogger
 ```python
-class AuditLogger:
-    def __init__(self, output_path: Path | None = None):
-        """If output_path is None, log to in-memory buffer only."""
-    
-    def log_cycle(self, cycle_result: CycleResult) -> list[AuditEvent]:
-        """Convert a CycleResult into a chain of AuditEvents and persist them."""
-    
-    def get_events(self) -> list[AuditEvent]:
-        """Return all logged events."""
-    
-    def flush(self) -> None:
-        """Write any buffered events to disk (JSONL)."""
+# Add to tests/test_runner.py
+class TestDemoLLMFailure:
+    def test_demo_mode_raises_when_bedrock_fails(self, tmp_path: Path) -> None:
+        """Demo mode must not silently fall back to fixture LLM."""
+        from unittest.mock import patch
+
+        from factor_atlas.__main__ import main
+
+        with patch(
+            "factor_atlas.runner.BedrockProvider",
+            side_effect=RuntimeError("Bedrock unavailable"),
+        ):
+            rc = main(
+                ["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)]
+            )
+        assert rc == 1
 ```
 
-### Event chain per cycle:
-Each cycle produces a chain of AuditEvents linked by parent_event_id:
+- [ ] **Step 2: Run test to verify it fails**
 
-1. **observe** — payload: snapshot_id, instrument, timestamp, source
-2. **propose** — payload: hypothesis_ids, count, factor_names; parent = observe
-3. **evaluate** — payload: for each hypothesis: hypothesis_id, passed, rejection_reasons, sharpe, drawdown; parent = propose
-4. **decide** — payload: decision_id (or null), selected_hypothesis_id (or null), rationale, status; parent = evaluate
-5. **gate** — payload: gate_results (list of {gate_name, passed, reason}), all_passed; parent = decide
-6. **execute** — payload: order_id, status, fill_price, fees, slippage, pre_balance, post_balance; OR rejection_reason; parent = gate
-7. **learn** — payload: cycle_summary with cycle_id, status, instrument, side, pnl_estimate; parent = execute
+Run: `uv run pytest tests/test_runner.py::TestDemoLLMFailure -v`
+Expected: FAIL (currently falls back to fixture provider and returns 0)
 
-### JSONL format:
-Each line is a JSON object representing one AuditEvent serialized via `.model_dump(mode="json")`.
+- [ ] **Step 3: Remove silent fallback in runner.py**
 
-### Chain integrity:
-- Every event except the first in a cycle has a parent_event_id
-- Events within a cycle share the same cycle_id
-- The chain is: observe → propose → evaluate → decide → gate → execute → learn
+Replace lines 716-728 in `src/factor_atlas/runner.py`:
 
-## Replay System
-
-### Replay verifier:
 ```python
-def verify_replay(
-    snapshots: list[MarketSnapshot],
-    ohlcv_data: dict[str, pd.DataFrame],
-    proposer: Proposer,
-    decision_provider: DecisionProvider,
-    config: RiskConfig,
-    original_events: list[AuditEvent],
-) -> ReplayResult:
-    """Re-run the same inputs and compare audit output for deterministic replay."""
+    if mode == "demo":
+        llm_provider = BedrockProvider()
+        print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
+        llm_info = {
+            "llm_provider": "aws-bedrock",
+            "llm_model": llm_provider.model_name,
+            "llm_mode": "live",
+        }
+    else:
+        llm_provider = FixtureLLMProvider()  # type: ignore[assignment]
+        llm_info = {
+            "llm_provider": "fixture",
+            "llm_model": "fixture",
+            "llm_mode": "fixture",
+        }
 ```
 
-### ReplayResult:
+Update `_build_manifest` to accept and include `llm_info: dict[str, str]`:
+
 ```python
-@dataclass
-class ReplayResult:
-    matches: bool  # True if replay produces identical audit events
-    original_count: int
-    replay_count: int
-    first_mismatch_index: int | None  # index of first differing event, if any
-    mismatch_detail: str | None  # human-readable description
+def _build_manifest(
+    run_id: str,
+    mode: str,
+    start_time: datetime,
+    end_time: datetime,
+    results: list[CycleResult],
+    config_hash: str,
+    commit: str,
+    closed_trades: list[ClosedTrade] | None = None,
+    llm_info: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    # ... existing code ...
+    manifest["llm_provider"] = (llm_info or {}).get("llm_provider", "unknown")
+    manifest["llm_model"] = (llm_info or {}).get("llm_model", "unknown")
+    manifest["llm_mode"] = (llm_info or {}).get("llm_mode", "unknown")
+    return manifest
 ```
 
-### Replay contract:
-- Same snapshots + same OHLCV + same config → same audit events (ignoring event_id UUIDs and timestamps)
-- Compare by: cycle_id, stage, payload content
-- For deterministic comparison, use uuid5 seeded from cycle inputs
+Pass `llm_info` from `run_paper_session` to `_build_manifest`.
 
-## Files to create/modify
-- `src/factor_atlas/audit.py` — AuditLogger
-- `src/factor_atlas/replay.py` — verify_replay, ReplayResult
-- `src/factor_atlas/orchestrator.py` — (MODIFY) integrate AuditLogger into MultiCycleRunner
-- `tests/test_audit.py` — JSONL output, chain integrity, all stages present
-- `tests/test_replay.py` — deterministic replay verification
+- [ ] **Step 4: Write test for manifest LLM fields**
 
-## Acceptance Criteria
-1. One accepted and one rejected cycle are fully logged with all 7 stages
-2. JSONL output is valid (each line parses as valid JSON)
-3. Event chain integrity: parent_event_id links form a connected chain per cycle
-4. Repeated input/configuration produces identical replay output
-5. AuditLogger works both in-memory and to file
-6. All prior tests still pass
-7. `uv run ruff check .` clean
-8. `uv run ruff format --check .` clean
-9. `uv run mypy src/ tests/` clean
+```python
+# Add to tests/test_runner.py TestRunPaperSession
+def test_manifest_contains_llm_fields(self, fixture_run_dir: Path) -> None:
+    manifest = json.loads((fixture_run_dir / "manifest.json").read_text())
+    assert manifest["llm_provider"] == "fixture"
+    assert manifest["llm_model"] == "fixture"
+    assert manifest["llm_mode"] == "fixture"
+```
 
-## Credential mode
-Unused — pure fixtures, no network, no API.
+- [ ] **Step 5: Run all tests**
 
-## Verification commands
+Run: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+Expected: all pass
+
+- [ ] **Step 6: Commit**
+
 ```bash
-uv run pytest tests/test_audit.py tests/test_replay.py -v
-uv run pytest tests/ -v
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src/ tests/
+git add src/factor_atlas/runner.py tests/test_runner.py
+git commit -m "fix(runner): remove silent LLM fallback, add manifest LLM fields"
 ```
+
+---
