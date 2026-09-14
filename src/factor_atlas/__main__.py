@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 # Load .env before anything else so BITGET_* and AWS_* are available
@@ -64,6 +65,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     explain_parser.add_argument("run_id", help="Run ID to explain.")
 
+    # --- report ---
+    report_parser = sub.add_parser(
+        "report", help="Generate HTML evidence report for judges."
+    )
+    report_parser.add_argument(
+        "--run-dir",
+        type=str,
+        required=True,
+        help="Path to a paper-trading run directory.",
+    )
+    report_parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Output HTML file path. Default: <run-dir>/evidence_report.html",
+    )
+
     return parser
 
 
@@ -119,6 +137,24 @@ def main(argv: list[str] | None = None) -> int:
         from factor_atlas.cli_commands import cmd_explain
 
         print(cmd_explain(args.run_id, Path("artifacts/paper-trading")))
+        return 0
+
+    if args.command == "report":
+        from pathlib import Path
+
+        from factor_atlas.report import generate_report_file
+
+        run_dir = Path(args.run_dir)
+        if not run_dir.exists():
+            print(f"Error: run directory not found: {run_dir}", file=sys.stderr)
+            return 1
+        out = Path(args.output) if args.output else None
+        try:
+            path = generate_report_file(run_dir, out)
+            print(f"Report generated: {path}")
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Error generating report: {e}", file=sys.stderr)
+            return 1
         return 0
 
     parser.print_help()

@@ -709,6 +709,57 @@ def _process_fixture_exits(
 
 
 # ---------------------------------------------------------------------------
+# Cycle summary printer
+# ---------------------------------------------------------------------------
+
+
+def _print_cycle_summary(result: CycleResult) -> None:
+    """Print a human-readable summary of one cycle."""
+    from factor_atlas.adapters.normalize import research_to_execution
+
+    instrument = result.snapshot.instrument
+    exec_sym = research_to_execution(instrument)
+    print(f"\n  ── Cycle: {exec_sym} ──")
+    print(f"  Data: {instrument} SPOT candles → {result.snapshot.close}")
+
+    if not result.hypotheses:
+        print("  Hypothesis: none — LLM found no factor with sufficient evidence")
+        print("  Decision: NO TRADE")
+        print(f"  Status: {result.status}")
+        return
+
+    if result.validated:
+        hyp, val = result.validated[0]
+        params = ", ".join(f"{k}={v}" for k, v in hyp.parameters.items())
+        print(f"  Hypothesis: {hyp.factor_name} ({params})")
+        print(f"  Validation: Sharpe {val.metrics.sharpe_ratio.value:.2f}")
+    else:
+        print(f"  Hypothesis: {len(result.hypotheses)} proposed, none validated")
+
+    if result.decision is None:
+        print("  Decision: NO TRADE — no validated hypothesis selected")
+        print(f"  Status: {result.status}")
+        return
+
+    d = result.decision
+    print(f"  Decision: {d.side.upper()} {exec_sym} @ ${d.price} qty {d.quantity}")
+    print(f'  Rationale: "{d.rationale[:100]}"')
+
+    if result.gate_results:
+        failed = [g for g in result.gate_results if not g.passed]
+        passed = len(result.gate_results) - len(failed)
+        if failed:
+            print(f"  Gates: FAILED — {failed[0].gate_name}: {failed[0].reason}")
+        else:
+            print(f"  Gates: {passed}/{len(result.gate_results)} passed")
+
+    if result.order:
+        print(f"  Order: {result.order.status}")
+
+    print(f"  Status: {result.status}")
+
+
+# ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
 
@@ -828,6 +879,10 @@ def run_paper_session(
 
         end_time = datetime.now(tz=UTC)
 
+        # Print human-readable cycle summaries
+        for result in results:
+            _print_cycle_summary(result)
+
         # Register newly opened positions
         _register_open_positions(results, broker_state)
 
@@ -922,18 +977,27 @@ def run_paper_session(
         f.write("\n")
 
     perf = manifest["performance_metrics"]
-    print(f"Paper run complete: {run_dir}")
-    print(f"  Cycles: {len(results)}")
-    print(f"  Accepted: {manifest['accepted_count']}")
-    print(f"  Rejected: {manifest['rejected_count']}")
+    print(f"\n{'=' * 60}")
+    print(f"  Run complete: {run_id}")
+    print(f"  Mode: {mode} | LLM: {manifest.get('llm_model', 'unknown')}")
     print(
-        f"  Performance: trades={perf['total_trades']}, "
-        f"win_rate={perf['win_rate']}, sharpe={perf['sharpe_ratio']}, "
-        f"max_dd={perf['max_drawdown']}"
+        f"  Cycles: {len(results)} "
+        f"(accepted: {manifest['accepted_count']}, "
+        f"rejected: {manifest['rejected_count']})"
     )
-    print(f"  Paper log: {paper_log_path}")
-    print(f"  Audit log: {audit_path}")
-    print(f"  Manifest: {manifest_path}")
+    if perf["total_trades"] > 0:
+        print(
+            f"  Trades: {perf['total_trades']} | "
+            f"Win rate: {perf['win_rate']:.1%} | "
+            f"Sharpe: {perf['sharpe_ratio']:.2f} | "
+            f"Sortino: {perf['sortino_ratio']:.2f}"
+        )
+        print(
+            f"  Max drawdown: {perf['max_drawdown']:.2f} | "
+            f"Total PnL: {perf['total_pnl']}"
+        )
+    print(f"  Output: {run_dir}")
+    print(f"{'=' * 60}")
 
     return run_dir
 
