@@ -179,7 +179,7 @@ class EvidenceLogger:
             direction = hypothesis.get("direction", "?")
             rationale = hypothesis.get("rationale", "")[:80]
             self._append_agent(
-                f"🧠 {instrument} Hypothesis: {factor} → {direction} | \"{rationale}\""
+                f'🧠 {instrument} Hypothesis: {factor} → {direction} | "{rationale}"'
             )
         if validation:
             sharpe = validation.get("sharpe", 0)
@@ -223,7 +223,7 @@ class EvidenceLogger:
         if selected_hypothesis:
             self._append_agent(
                 f"🤖 Decision: {side!s} {instrument} @ ${price} qty={quantity} "
-                f"| \"{rationale[:80]}\""
+                f'| "{rationale[:80]}"'
             )
         else:
             self._append_agent(f"⏭️ No trade for {instrument} — {rationale[:80]}")
@@ -428,15 +428,23 @@ def test_append_only_across_calls(tmp_path: Path) -> None:
     """Two separate logger instances (simulating two runs) append to same files."""
     logger1 = EvidenceLogger(logs_dir=tmp_path, run_id="run-001")
     logger1.log_decision(
-        cycle_id="c1", instrument="AAPLUSDT",
-        selected_hypothesis="h1", side="buy", quantity="1",
-        price="100", rationale="first",
+        cycle_id="c1",
+        instrument="AAPLUSDT",
+        selected_hypothesis="h1",
+        side="buy",
+        quantity="1",
+        price="100",
+        rationale="first",
     )
     logger2 = EvidenceLogger(logs_dir=tmp_path, run_id="run-002")
     logger2.log_decision(
-        cycle_id="c2", instrument="METAUSDT",
-        selected_hypothesis="h2", side="sell", quantity="2",
-        price="200", rationale="second",
+        cycle_id="c2",
+        instrument="METAUSDT",
+        selected_hypothesis="h2",
+        side="sell",
+        quantity="2",
+        price="200",
+        rationale="second",
     )
     lines = tmp_path.joinpath("decisions.jsonl").read_text().strip().split("\n")
     assert len(lines) == 2
@@ -503,18 +511,21 @@ from factor_atlas.sizing import compute_atr, compute_position_size
 def _make_ohlcv(n: int = 30, base_price: float = 200.0) -> pd.DataFrame:
     """Build a synthetic OHLCV DataFrame."""
     import numpy as np
+
     rng = np.random.default_rng(42)
     closes = base_price + rng.standard_normal(n).cumsum()
     highs = closes + rng.uniform(1, 5, n)
     lows = closes - rng.uniform(1, 5, n)
     opens = closes + rng.uniform(-2, 2, n)
-    return pd.DataFrame({
-        "open": opens,
-        "high": highs,
-        "low": lows,
-        "close": closes,
-        "volume": rng.uniform(1000, 5000, n),
-    })
+    return pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": rng.uniform(1000, 5000, n),
+        }
+    )
 
 
 def test_compute_atr_returns_positive() -> None:
@@ -874,20 +885,22 @@ git commit -m "feat(runner): wire evidence logging into paper session"
 Before calling `run_cycles` (~line 869), add:
 
 ```python
-    # Compute ATR per instrument for sizing
-    atr_values: dict[str, float] = {}
-    for sym, df in ohlcv_data.items():
-        if not df.empty and len(df) >= risk_config.atr_period:
-            atr_values[sym] = compute_atr(df, risk_config.atr_period)
+# Compute ATR per instrument for sizing
+atr_values: dict[str, float] = {}
+for sym, df in ohlcv_data.items():
+    if not df.empty and len(df) >= risk_config.atr_period:
+        atr_values[sym] = compute_atr(df, risk_config.atr_period)
 
-    # Compute sized quantities per instrument
-    sized_quantities: dict[str, Decimal] = {}
-    for sym, df in ohlcv_data.items():
-        if sym in atr_values and not df.empty:
-            price = Decimal(str(df.iloc[-1]["close"]))
-            sized_quantities[sym] = compute_position_size(
-                price=price, atr=atr_values[sym], risk_config=risk_config,
-            )
+# Compute sized quantities per instrument
+sized_quantities: dict[str, Decimal] = {}
+for sym, df in ohlcv_data.items():
+    if sym in atr_values and not df.empty:
+        price = Decimal(str(df.iloc[-1]["close"]))
+        sized_quantities[sym] = compute_position_size(
+            price=price,
+            atr=atr_values[sym],
+            risk_config=risk_config,
+        )
 ```
 
 - [ ] **Step 8: Thread sized_quantities through orchestrator**
@@ -928,10 +941,15 @@ When a position is closed and `evidence` is not None, call `evidence.log_trade()
 - [ ] **Step 10: Update the caller in `run_paper_session` to pass atr_values and evidence**
 
 ```python
-            _process_demo_exits(
-                broker_state, perp_prices, risk_config, config_hash, paper_log_f,
-                atr_values=atr_values, evidence=evidence,
-            )
+_process_demo_exits(
+    broker_state,
+    perp_prices,
+    risk_config,
+    config_hash,
+    paper_log_f,
+    atr_values=atr_values,
+    evidence=evidence,
+)
 ```
 
 - [ ] **Step 11: Run full test suite + type check**
