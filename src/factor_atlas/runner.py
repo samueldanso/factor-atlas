@@ -1190,10 +1190,55 @@ def validate_config() -> None:
     )
 
 
+def run_continuous(
+    mode: str = "demo",
+    cycles: int = 4,
+    interval: int = 14400,
+    output_dir: Path | None = None,
+    max_rounds: int | None = None,
+) -> None:
+    """Run paper sessions in a loop with sleep between rounds.
+
+    Handles SIGINT/SIGTERM for graceful shutdown. If ``max_rounds`` is set,
+    stops after that many rounds (useful for GitHub Actions cron).
+    """
+    import signal
+    import threading
+
+    shutdown_event = threading.Event()
+
+    def _handle_signal(signum: int, frame: object) -> None:
+        print(f"\nReceived signal {signum}, finishing current round...")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    round_num = 0
+    while not shutdown_event.is_set():
+        round_num += 1
+        print(f"\n{'=' * 60}")
+        print(f"  Continuous round {round_num} | interval={interval}s")
+        print(f"{'=' * 60}")
+        try:
+            run_paper_session(mode=mode, cycles=cycles, output_dir=output_dir)
+        except (ValueError, RuntimeError, OSError) as e:
+            print(f"  Round {round_num} failed: {e}", file=sys.stderr)
+
+        if max_rounds is not None and round_num >= max_rounds:
+            print(f"  Reached max_rounds={max_rounds}, stopping.")
+            break
+
+        if not shutdown_event.is_set():
+            print(f"  Sleeping {interval}s until next round...")
+            shutdown_event.wait(timeout=interval)
+
+
 __all__ = [
     "SOFTWARE_VERSION",
     "compute_config_hash",
     "get_git_commit",
+    "run_continuous",
     "run_paper_session",
     "validate_config",
 ]
