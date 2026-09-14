@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FactorAtlas — Evidence Report</title>
+<style>
+:root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #4f8cff;
+    --green: #22c55e; --red: #ef4444; --yellow: #f59e0b;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); padding: 24px; max-width: 1000px; margin: 0 auto; line-height: 1.5; }
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+h2 { font-size: 1.2rem; margin: 32px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 1rem; margin-bottom: 8px; color: var(--muted); }
+.subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 16px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+.stat-value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+.badge.success { background: rgba(34,197,94,0.15); color: var(--green); }
+.badge.danger { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge.warn { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.badge.muted { background: rgba(139,148,158,0.15); color: var(--muted); }
+.cycle-card, .trade-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+.cycle-header, .trade-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.cycle-body, .trade-body { padding: 16px; }
+.instrument { font-weight: 700; font-size: 1rem; }
+.factor-tag { background: rgba(79,140,255,0.15); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+.side-buy { color: var(--green); font-weight: 600; }
+.side-sell { color: var(--red); font-weight: 600; }
+.cycle-meta, .trade-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px; font-size: 0.85rem; margin-bottom: 12px; }
+.rationale { background: rgba(79,140,255,0.05); border-left: 3px solid var(--accent); padding: 10px 14px; margin-top: 10px; font-size: 0.85rem; border-radius: 0 6px 6px 0; }
+.gates { margin-top: 12px; }
+.gates-summary { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+.gates-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.gate-pass, .gate-fail { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 500; cursor: help; }
+.gate-pass { background: rgba(34,197,94,0.1); color: var(--green); }
+.gate-fail { background: rgba(239,68,68,0.15); color: var(--red); font-weight: 700; }
+.pipeline { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
+.pipeline-stage { display: flex; gap: 12px; padding: 8px 12px; border-radius: 4px; font-size: 0.8rem; border-left: 3px solid var(--border); }
+.pipeline-stage.stage-pass { border-left-color: var(--green); }
+.pipeline-stage.stage-fail { border-left-color: var(--red); }
+.pipeline-stage.stage-skip { border-left-color: var(--muted); opacity: 0.7; }
+.stage-name { min-width: 70px; font-weight: 700; color: var(--accent); font-size: 0.75rem; }
+.stage-detail { color: var(--muted); }
+.stage-detail em { color: var(--text); font-style: normal; }
+.eval-pass { color: var(--green); }
+.eval-fail { color: var(--red); }
+.trade-card.success { border-left: 3px solid var(--green); }
+.trade-card.danger { border-left: 3px solid var(--red); }
+code { background: rgba(139,148,158,0.15); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; word-break: break-all; }
+.equity-chart { margin: 16px 0; }
+.equity-svg { width: 100%; max-width: 500px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.75rem; text-align: center; }
+.agent-flow { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.flow-steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; }
+.flow-step { background: rgba(79,140,255,0.1); border: 1px solid rgba(79,140,255,0.3); padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
+.flow-arrow { color: var(--muted); font-size: 1.2rem; }
+@media (max-width: 600px) {
+    body { padding: 12px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .cycle-meta, .trade-meta { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<h1>FactorAtlas — Evidence Report</h1>
+<div class="subtitle">
+    Autonomous Factor Discovery Agent for Bitget AI Genesis S2<br>
+    Run: <code>802bff3d-2c99-4d52-a87f-89232a1d6552</code> | Generated: 2026-09-14 09:46 UTC
+</div>
+
+<div class="agent-flow">
+    <h3>Agent Flow (each cycle)</h3>
+    <div class="flow-steps">
+        <span class="flow-step">Market Data</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">LLM Hypotheses</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Factor Validation</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">LLM Decision</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">14 Risk Gates</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Demo Order</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Verify Fill</span>
+    </div>
+</div>
+
+<h2>Run Summary</h2>
+<div class="summary-grid">
+    <div class="stat-card"><div class="stat-value">4</div><div class="stat-label">Cycles</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--green)">3</div><div class="stat-label">Accepted</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--red)">1</div><div class="stat-label">Rejected</div></div>
+    <div class="stat-card"><div class="stat-value">3</div><div class="stat-label">Closed Trades</div></div>
+    <div class="stat-card"><div class="stat-value">66.67%</div><div class="stat-label">Win Rate</div></div>
+    <div class="stat-card"><div class="stat-value">3.46</div><div class="stat-label">Sharpe</div></div>
+    <div class="stat-card"><div class="stat-value">4.79</div><div class="stat-label">Sortino</div></div>
+    <div class="stat-card"><div class="stat-value">$7.11</div><div class="stat-label">Max Drawdown</div></div>
+    <div class="stat-card"><div class="stat-value">$-7.12</div><div class="stat-label">Total PnL</div></div>
+    <div class="stat-card"><div class="stat-value">0.21</div><div class="stat-label">Profit Factor</div></div>
+    <div class="stat-card"><div class="stat-value">25.0h</div><div class="stat-label">Avg Hold</div></div>
+</div>
+
+<div class="cycle-meta" style="font-size:0.85rem; margin-bottom:24px;">
+    <div><strong>Mode:</strong> demo | <strong>LLM:</strong> us.anthropic.claude-sonnet-4-6 (aws-bedrock)</div>
+    <div><strong>Time:</strong> 2026-09-14T09:29:06.756013+00:00 → 2026-09-14T09:30:17.675694+00:00</div>
+    <div><strong>Instruments:</strong> AAPLUSDT, METAUSDT, NVDAUSDT, TSLAUSDT</div>
+    <div><strong>Commit:</strong> <code>415e1e4</code> | <strong>Config:</strong> <code>sha256:f592798c28a8f63b</code></div>
+</div>
+
+
+    <div class="equity-chart">
+        <h3>Equity Curve (Cumulative PnL)</h3>
+        <svg viewBox="0 0 400 120" class="equity-svg">
+            <line x1="20" y1="31.3" x2="380" y2="31.3"
+                  stroke="#666" stroke-dasharray="4" stroke-width="0.5"/>
+            <polyline points="20.0,20.0 200.0,100.0 380.0,94.8" fill="none" stroke="#4f8cff" stroke-width="2"/>
+            <circle cx="20.0" cy="20.0" r="3" fill="#22c55e"/> <circle cx="200.0" cy="100.0" r="3" fill="#ef4444"/> <circle cx="380.0" cy="94.8" r="3" fill="#ef4444"/>
+            <text x="20" y="118" font-size="10" fill="#888">Start</text>
+            <text x="360" y="118" font-size="10" fill="#888">End</text>
+            <text x="2" y="16" font-size="9" fill="#888">$1.26</text>
+            <text x="2" y="112" font-size="9" fill="#888">$-7.70</text>
+        </svg>
+    </div>
+
+<h2>Closed Trades</h2>
+    <div class="trade-card success">
+        <div class="trade-header">
+            <span class="instrument">AAPLUSDT</span>
+            <span class="badge success">WIN</span>
+            <span>SELL</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="trade-body">
+            <div class="trade-meta">
+                <div><strong>Entry:</strong> $330.77</div>
+                <div><strong>Exit:</strong> $330.95</div>
+                <div><strong>PnL:</strong> <span class="success">$1.26</span> (0.05%)</div>
+                <div><strong>Hold:</strong> 25.0h</div>
+                <div><strong>Close Order:</strong> <code>1483324991972200448</code></div>
+            </div>
+            <div class="rationale">exit: pnl=1.26 (0.05%), hold=25.0h</div>
+        </div>
+    </div>
+    <div class="trade-card danger">
+        <div class="trade-header">
+            <span class="instrument">METAUSDT</span>
+            <span class="badge danger">LOSS</span>
+            <span>BUY</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="trade-body">
+            <div class="trade-meta">
+                <div><strong>Entry:</strong> $638.96</div>
+                <div><strong>Exit:</strong> $640.24</div>
+                <div><strong>PnL:</strong> <span class="danger">$-8.96</span> (-0.20%)</div>
+                <div><strong>Hold:</strong> 25.0h</div>
+                <div><strong>Close Order:</strong> <code>1483324995096956980</code></div>
+            </div>
+            <div class="rationale">exit: pnl=-8.96 (-0.20%), hold=25.0h</div>
+        </div>
+    </div>
+    <div class="trade-card success">
+        <div class="trade-header">
+            <span class="instrument">NVDAUSDT</span>
+            <span class="badge success">WIN</span>
+            <span>SELL</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="trade-body">
+            <div class="trade-meta">
+                <div><strong>Entry:</strong> $211.06</div>
+                <div><strong>Exit:</strong> $211.64</div>
+                <div><strong>PnL:</strong> <span class="success">$0.58</span> (0.28%)</div>
+                <div><strong>Hold:</strong> 25.0h</div>
+                <div><strong>Close Order:</strong> <code>1483324998427234304</code></div>
+            </div>
+            <div class="rationale">exit: pnl=0.5813 (0.28%), hold=25.0h</div>
+        </div>
+    </div>
+
+<h2>Cycle Details</h2>
+
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">AAPLUSDT</span>
+            <span class="badge success">FILLED</span>
+            <span class="side-sell">SELL</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>Price:</strong> $330.86</div>
+                <div><strong>Qty:</strong> 1</div>
+                <div><strong>Sharpe:</strong> 2.4568</div>
+                <div><strong>Bitget Order:</strong> <code>1483325250270023680</code></div>
+                <div><strong>Verification:</strong> <span class="badge success">verified_filled</span></div>
+            </div>
+            <div class="rationale"><strong>LLM Rationale:</strong> Candidate 0 (mean_reversion short) has the highest Sharpe ratio at 2.4568 and the lowest maximum drawdown at -0.0063, making it the most risk-adjusted trade. While candidate 2 has a nearly identical Sharpe (2.4511), its max drawdown is slightly higher (-0.0074). Candidate 1 has a significantly lower Sharpe and much higher drawdown. The mean_reversion short signal at current price 330.8605 offers the best return-to-risk profile.</div>
+            
+        <div class="gates">
+            <div class="gates-summary">14/14 gates passed</div>
+            <div class="gates-list"><span class="gate-pass" title="factor &#x27;mean_reversion&#x27; is in allowlist">factor_allowlist</span> <span class="gate-pass" title="data age 17.5h within 24h">data_freshness</span> <span class="gate-pass" title="observations 28 &gt;= 20">min_sample_size</span> <span class="gate-pass" title="validation passed">validation_threshold</span> <span class="gate-pass" title="notional 330.8605 &lt;= 10000">max_notional</span> <span class="gate-pass" title="positions 0 &lt; 3">max_position</span> <span class="gate-pass" title="total exposure 330.8605 &lt;= 50000">exposure_cap</span> <span class="gate-pass" title="no prior order for instrument">cooldown</span> <span class="gate-pass" title="daily loss 7.1187 &lt; 2000">daily_loss_cap</span> <span class="gate-pass" title="not a duplicate">duplicate_suppression</span> <span class="gate-pass" title="instrument positions 0 &lt; 2">concentration_guard</span> <span class="gate-pass" title="quantity 1 &lt;= 1000000">max_quantity</span> <span class="gate-pass" title="balance 49999.8001264 &gt;= notional 330.8605">balance_check</span> <span class="gate-pass" title="no pending orders for instrument">pending_order_check</span></div>
+        </div>
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RAAPLUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: mean_reversion, momentum, volatility_breakout, ema_crossover, volume_spike</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">3/5 passed validation<br><span class="eval-pass">[pass] Sharpe=2.46 DD=-0.0063</span><br><span class="eval-fail">[fail] Sharpe=-0.98 DD=-0.0592 — sharpe below threshold: -0.9826 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-4.11 DD=-0.0620 — sharpe below threshold: -4.1084 &lt; 0.5</span><br><span class="eval-pass">[pass] Sharpe=1.22 DD=-0.0504</span><br><span class="eval-pass">[pass] Sharpe=2.45 DD=-0.0074</span></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: accepted<br><em>Candidate 0 (mean_reversion short) has the highest Sharpe ratio at 2.4568 and the lowest maximum drawdown at -0.0063, making it the most risk-adjusted trade. While candidate 2 has a nearly identical Sharpe (2.4511), its max drawdown is slightly higher (-0.0074). Candidate 1 has a significantly lower Sharpe and much higher drawdown. The mean_reversion short signal at current price 330.8605 offers the best return-to-risk profile.</em></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">All passed (14 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: filled | Order: 0763eceb-3a01-57b2-b38e-9e5fe23c9239</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: accepted | PnL estimate: -0.4963</div>
+                </div></div>
+        </div>
+    </div>
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">METAUSDT</span>
+            <span class="badge success">FILLED</span>
+            <span class="side-sell">SELL</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>Price:</strong> $640.28</div>
+                <div><strong>Qty:</strong> 1</div>
+                <div><strong>Sharpe:</strong> 3.9996</div>
+                <div><strong>Bitget Order:</strong> <code>1483325253923262464</code></div>
+                <div><strong>Verification:</strong> <span class="badge warn">unverified</span></div>
+            </div>
+            <div class="rationale"><strong>LLM Rationale:</strong> Candidate 0 (mean_reversion, short) has a significantly higher Sharpe ratio (4.00 vs 1.81) and a dramatically lower max drawdown (-0.0014 vs -0.0667), making it clearly superior on both risk-adjusted return and downside risk metrics.</div>
+            
+        <div class="gates">
+            <div class="gates-summary">14/14 gates passed</div>
+            <div class="gates-list"><span class="gate-pass" title="factor &#x27;mean_reversion&#x27; is in allowlist">factor_allowlist</span> <span class="gate-pass" title="data age 17.5h within 24h">data_freshness</span> <span class="gate-pass" title="observations 28 &gt;= 20">min_sample_size</span> <span class="gate-pass" title="validation passed">validation_threshold</span> <span class="gate-pass" title="notional 640.28 &lt;= 10000">max_notional</span> <span class="gate-pass" title="positions 1 &lt; 3">max_position</span> <span class="gate-pass" title="total exposure 971.1405 &lt;= 50000">exposure_cap</span> <span class="gate-pass" title="no prior order for instrument">cooldown</span> <span class="gate-pass" title="daily loss 7.1187 &lt; 2000">daily_loss_cap</span> <span class="gate-pass" title="not a duplicate">duplicate_suppression</span> <span class="gate-pass" title="instrument positions 0 &lt; 2">concentration_guard</span> <span class="gate-pass" title="quantity 1 &lt;= 1000000">max_quantity</span> <span class="gate-pass" title="balance 49999.8001264 &gt;= notional 640.28">balance_check</span> <span class="gate-pass" title="no pending orders for instrument">pending_order_check</span></div>
+        </div>
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RMETAUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: mean_reversion, volatility_breakout, momentum, ema_crossover, volume_spike</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">2/5 passed validation<br><span class="eval-pass">[pass] Sharpe=4.00 DD=-0.0014</span><br><span class="eval-fail">[fail] Sharpe=-1.99 DD=-0.0332 — sharpe below threshold: -1.9901 &lt; 0.5</span><br><span class="eval-pass">[pass] Sharpe=1.81 DD=-0.0667</span><br><span class="eval-fail">[fail] Sharpe=0.45 DD=-0.0856 — sharpe below threshold: 0.4499 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-2.64 DD=-0.0049 — sharpe below threshold: -2.6359 &lt; 0.5</span></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: accepted<br><em>Candidate 0 (mean_reversion, short) has a significantly higher Sharpe ratio (4.00 vs 1.81) and a dramatically lower max drawdown (-0.0014 vs -0.0667), making it clearly superior on both risk-adjusted return and downside risk metrics.</em></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">All passed (14 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: filled | Order: bcc87b5c-2385-5436-adf5-9e49ffdcab1b</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: accepted | PnL estimate: -0.9604</div>
+                </div></div>
+        </div>
+    </div>
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">NVDAUSDT</span>
+            <span class="badge muted">NO_CANDIDATE</span>
+            <span class="">—</span>
+            <span class="factor-tag">—</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>Price:</strong> $211.42</div>
+                <div><strong>Qty:</strong> 0</div>
+                <div><strong>Sharpe:</strong> —</div>
+                <div><strong>Bitget Order:</strong> <code>—</code></div>
+                <div><strong>Verification:</strong> <span class="badge warn">not_applicable</span></div>
+            </div>
+            
+            
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RNVDAUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: momentum, mean_reversion, volatility_breakout, volume_spike, ema_crossover</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">0/5 passed validation<br><span class="eval-fail">[fail] Sharpe=-6.57 DD=-0.1801 — sharpe below threshold: -6.5713 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=0.00 DD=0.0000 — no signal: all test signals are 0</span><br><span class="eval-fail">[fail] Sharpe=-3.74 DD=-0.0951 — sharpe below threshold: -3.7361 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-1.98 DD=-0.0264 — sharpe below threshold: -1.9751 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-3.39 DD=-0.1377 — sharpe below threshold: -3.3883 &lt; 0.5</span></div>
+                </div>
+                <div class="pipeline-stage stage-skip">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: no_candidate<br><em>no validated candidate</em></div>
+                </div>
+                <div class="pipeline-stage stage-fail">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">BLOCKED (0 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-skip">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: skipped | Order: —</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: no_candidate | PnL estimate: 0.0000</div>
+                </div></div>
+        </div>
+    </div>
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">TSLAUSDT</span>
+            <span class="badge success">FILLED</span>
+            <span class="side-buy">BUY</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>Price:</strong> $357.99</div>
+                <div><strong>Qty:</strong> 1</div>
+                <div><strong>Sharpe:</strong> 2.9731</div>
+                <div><strong>Bitget Order:</strong> <code>1483325257802993664</code></div>
+                <div><strong>Verification:</strong> <span class="badge warn">unverified</span></div>
+            </div>
+            <div class="rationale"><strong>LLM Rationale:</strong> Candidate 1 (mean_reversion, long) dominates on both key metrics: highest Sharpe ratio at 2.9731 and exceptionally low max drawdown of -0.0045, indicating highly favorable risk-adjusted returns with minimal downside risk compared to the other candidates.</div>
+            
+        <div class="gates">
+            <div class="gates-summary">14/14 gates passed</div>
+            <div class="gates-list"><span class="gate-pass" title="factor &#x27;mean_reversion&#x27; is in allowlist">factor_allowlist</span> <span class="gate-pass" title="data age 17.5h within 24h">data_freshness</span> <span class="gate-pass" title="observations 28 &gt;= 20">min_sample_size</span> <span class="gate-pass" title="validation passed">validation_threshold</span> <span class="gate-pass" title="notional 357.99 &lt;= 10000">max_notional</span> <span class="gate-pass" title="positions 2 &lt; 3">max_position</span> <span class="gate-pass" title="total exposure 1329.1305 &lt;= 50000">exposure_cap</span> <span class="gate-pass" title="no prior order for instrument">cooldown</span> <span class="gate-pass" title="daily loss 7.1187 &lt; 2000">daily_loss_cap</span> <span class="gate-pass" title="not a duplicate">duplicate_suppression</span> <span class="gate-pass" title="instrument positions 0 &lt; 2">concentration_guard</span> <span class="gate-pass" title="quantity 1 &lt;= 1000000">max_quantity</span> <span class="gate-pass" title="balance 49999.8001264 &gt;= notional 357.99">balance_check</span> <span class="gate-pass" title="no pending orders for instrument">pending_order_check</span></div>
+        </div>
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RTSLAUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: momentum, mean_reversion, volatility_breakout, volume_spike, ema_crossover</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">3/5 passed validation<br><span class="eval-pass">[pass] Sharpe=1.73 DD=-0.0810</span><br><span class="eval-pass">[pass] Sharpe=2.97 DD=-0.0045</span><br><span class="eval-fail">[fail] Sharpe=-4.33 DD=-0.1172 — sharpe below threshold: -4.3332 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-1.63 DD=-0.0904 — sharpe below threshold: -1.6336 &lt; 0.5</span><br><span class="eval-pass">[pass] Sharpe=1.24 DD=-0.0810</span></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: accepted<br><em>Candidate 1 (mean_reversion, long) dominates on both key metrics: highest Sharpe ratio at 2.9731 and exceptionally low max drawdown of -0.0045, indicating highly favorable risk-adjusted returns with minimal downside risk compared to the other candidates.</em></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">All passed (14 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: filled | Order: addb06ea-2ad3-5c02-9dbb-1553cb58452d</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: accepted | PnL estimate: -0.5370</div>
+                </div></div>
+        </div>
+    </div>
+
+<div class="footer">
+    FactorAtlas v0.1.0 — Bitget AI Genesis Season 2, Track 2 Agentic Trading<br>
+    This report was generated from machine-produced audit logs. All orders executed on Bitget Demo (paper trading).
+</div>
+</body>
+</html>

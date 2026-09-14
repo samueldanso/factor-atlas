@@ -1,0 +1,21 @@
+{
+  "run_id": "88eaf22f-1329-45a8-9542-8c55dc5e7431",
+  "start_timestamp": "2026-09-13T06:27:56.035914+00:00",
+  "end_timestamp": "2026-09-13T06:28:31.362375+00:00",
+  "timezone": "UTC",
+  "mode": "demo",
+  "instruments": [
+    "RAAPLUSDT",
+    "RMETAUSDT"
+  ],
+  "execution_instruments": [
+    "AAPLUSDT",
+    "METAUSDT"
+  ],
+  "cycles_completed": 2,
+  "accepted_count": 0,
+  "rejected_count": 2,
+  "code_commit": "60387d3",
+  "config_hash": "sha256:f592798c28a8f63b",
+  "software_version": "0.1.0"
+}

@@ -1,0 +1,30 @@
+{
+  "run_id": "7bb7cd8f-decf-4c32-9c12-69cadc12378c",
+  "start_timestamp": "2026-09-14T02:16:48.635909+00:00",
+  "end_timestamp": "2026-09-14T02:17:19.592469+00:00",
+  "timezone": "UTC",
+  "mode": "demo",
+  "instruments": [
+    "RAAPLUSDT",
+    "RMETAUSDT"
+  ],
+  "execution_instruments": [
+    "AAPLUSDT",
+    "METAUSDT"
+  ],
+  "cycles_completed": 2,
+  "accepted_count": 2,
+  "rejected_count": 0,
+  "code_commit": "013ac16",
+  "config_hash": "sha256:f592798c28a8f63b",
+  "software_version": "0.1.0",
+  "performance_metrics": {
+    "total_trades": 0,
+    "win_rate": 0.0,
+    "total_pnl": "0",
+    "avg_pnl": "0",
+    "sharpe_ratio": 0.0,
+    "max_drawdown": 0.0,
+    "profit_factor": null
+  }
+}
