@@ -36,6 +36,7 @@ from factor_atlas.llm import (
 from factor_atlas.metrics import compute_metrics, make_closed_trade
 from factor_atlas.orchestrator import CycleResult, run_cycles
 from factor_atlas.risk import RiskConfig
+from factor_atlas.sizing import compute_atr, compute_position_size
 
 SOFTWARE_VERSION = "0.1.0"
 
@@ -664,6 +665,8 @@ def _process_demo_exits(
     risk_config: RiskConfig,
     config_hash: str,
     paper_log_f: Any,
+    atr_values: dict[str, float] | None = None,
+    evidence: EvidenceLogger | None = None,
 ) -> None:
     """Check open positions for exit conditions and close them via bgc.
 
@@ -678,7 +681,10 @@ def _process_demo_exits(
         current_price = perp_prices.get(exec_sym)
         if current_price is None:
             continue
-        should_exit, reason = _should_exit(pos, current_price, now, risk_config)
+        atr = (atr_values or {}).get(instrument)
+        should_exit, reason = _should_exit(
+            pos, current_price, now, risk_config, atr=atr
+        )
         if should_exit:
             to_close.append(instrument)
             closed = make_closed_trade(pos, current_price, now)
@@ -703,6 +709,21 @@ def _process_demo_exits(
 
             close_record = _build_close_record(closed, config_hash, bgc_close_id)
             paper_log_f.write(json.dumps(close_record) + "\n")
+
+            if evidence is not None:
+                close_side = "sell" if pos.side == "buy" else "buy"
+                evidence.log_trade(
+                    cycle_id=pos.cycle_id,
+                    record_type="exit",
+                    instrument=exec_sym,
+                    side=close_side,
+                    price=str(current_price),
+                    size=str(pos.quantity),
+                    order_id=bgc_close_id,
+                    status="closed",
+                    pnl=str(closed.pnl),
+                    pnl_pct=closed.pnl_pct,
+                )
 
     for instrument in to_close:
         del broker_state.open_positions[instrument]
@@ -883,6 +904,23 @@ def run_paper_session(
     # Write paper log — open file here so exit processor can append close records
     paper_log_path = run_dir / "paper_log.jsonl"
 
+    # Compute ATR per instrument for sizing (before exits and cycles)
+    atr_values: dict[str, float] = {}
+    for sym, df in ohlcv_data.items():
+        if not df.empty and len(df) >= risk_config.atr_period:
+            atr_values[sym] = compute_atr(df, risk_config.atr_period)
+
+    # Compute sized quantities per instrument
+    sized_quantities: dict[str, Decimal] = {}
+    for sym, df in ohlcv_data.items():
+        if sym in atr_values and not df.empty:
+            price = Decimal(str(df.iloc[-1]["close"]))
+            sized_quantities[sym] = compute_position_size(
+                price=price,
+                atr=atr_values[sym],
+                risk_config=risk_config,
+            )
+
     with paper_log_path.open("a") as paper_log_f:
         # Demo: process exits from prior runs before opening new positions
         if mode == "demo" and broker_state.open_positions:
@@ -894,7 +932,13 @@ def run_paper_session(
             )
             perp_prices = _fetch_perp_prices(exec_symbols)
             _process_demo_exits(
-                broker_state, perp_prices, risk_config, config_hash, paper_log_f
+                broker_state,
+                perp_prices,
+                risk_config,
+                config_hash,
+                paper_log_f,
+                atr_values=atr_values,
+                evidence=evidence,
             )
 
         results = run_cycles(
@@ -906,6 +950,7 @@ def run_paper_session(
             risk_config=risk_config,
             audit_logger=audit_logger,
             exchange_state=exchange_state,
+            sized_quantities=sized_quantities,
         )
 
         end_time = datetime.now(tz=UTC)
