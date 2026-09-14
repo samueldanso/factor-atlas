@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build a runnable Factor Discovery Agent for Bitget’s Agentic Trading track. Given a market/event snapshot, the agent autonomously proposes constrained factor hypotheses, mines and evaluates them through deterministic research code, selects a validated candidate, applies risk gates, and automatically executes the resulting decision in paper trading. The LLM is the decision-making/orchestration layer; it never emits arbitrary executable trading code or bypasses deterministic controls.
+Build a runnable Factor Discovery Agent for Bitget's Agentic Trading track. Given a market/event snapshot, the agent autonomously proposes constrained factor hypotheses, mines and evaluates them through deterministic research code, selects a validated candidate, applies risk gates, and automatically executes the resulting decision in paper trading. The LLM is the decision-making/orchestration layer; it never emits arbitrary executable trading code or bypasses deterministic controls.
 
 ## Competition contract
 
@@ -15,6 +15,37 @@ Build a runnable Factor Discovery Agent for Bitget’s Agentic Trading track. Gi
 - Review path: provide labeled public links in the single Submission Materials Link field; UID eligibility checks do not replace the paper-log link
 - Execution modes: deterministic simulator for development/runnable demo; Bitget Demo paper trading for the required competition-period paper log
 
+## Instrument architecture
+
+FactorAtlas uses a two-layer instrument design:
+
+### Research layer (rToken SPOT)
+
+rToken spot instruments (`RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT`) are used for:
+- Market data ingestion (SPOT candles via bgc)
+- Factor discovery and hypothesis evaluation
+- Event and decision analysis
+
+These are the primary data source for the factor agent's research and signal generation.
+
+### Execution layer (stock perpetuals, USDT-FUTURES)
+
+Stock perpetual instruments (`AAPLUSDT`, `NVDAUSDT`, `TSLAUSDT`, `METAUSDT`) are used for:
+- Demo/paper order placement (the only venue where Demo orders succeed)
+- Fill verification and position tracking
+- Performance metrics (PnL, Sharpe, drawdown)
+
+Bitget support confirmed (2026-09-13) that stock perpetuals are an accepted execution venue for this track.
+
+### Separation rules
+
+- The paper log must record both the research instrument (rToken) and the execution instrument (perp) for every cycle.
+- Perp prices, order IDs, fills, fees, and positions are logged separately from rToken research data.
+- The system must never claim that a perp fill is an rToken spot fill.
+- Performance metrics (Sharpe, drawdown, win rate) are computed from perp execution data only.
+- Factor validation metrics (backtest Sharpe, Sortino) are computed from rToken research data and labeled as `estimated` (backtest), not `observed` (execution).
+- rToken SPOT Demo execution remains unresolved (returns 404). If Bitget confirms it works, the execution layer may switch to rToken SPOT. Until then, stock perpetuals are the execution venue.
+
 ## Proposed stack
 
 - Python 3.11
@@ -24,109 +55,467 @@ Build a runnable Factor Discovery Agent for Bitget’s Agentic Trading track. Gi
 - `httpx` for controlled data adapters
 - `pytest` for tests
 - `ruff` for lint/format
-- `bgc` for Bitget discovery and optional Demo access
+- `bgc` for Bitget discovery, market data, Demo order execution, and exchange state queries
 - `bitget-signal` skills/MCP for research context only
+- `boto3` for AWS Bedrock LLM access (Claude Sonnet 4.6)
+- `python-dotenv` for credential loading from `.env`
 
-Do not add an LLM framework until the agent boundary is clear. A small provider interface is preferred over coupling the core research engine to one framework.
+Do not add an LLM framework. A small provider interface (`LLMProvider` protocol) is preferred over coupling the core research engine to one framework.
 
 ## System boundaries
 
 ```text
-market/event inputs
+market/event inputs (rToken SPOT candles via bgc for research)
         ↓
 event normalizer + snapshot manifest
         ↓
-research loop: propose hypotheses → mine/evaluate registered factors → iterate/backtest
+pre-flight: credential validation + exchange state query (positions, balances, orders)
         ↓
-LLM selects a validated candidate and emits a structured trade decision
+reconciliation: compare exchange state with local positions_state.json
         ↓
-deterministic risk gates (may veto)
+exit processing: evaluate open positions against current perp prices (stop-loss / take-profit / max-hold)
         ↓
-automatic paper executor (no approval pause)
+research loop: propose hypotheses from rToken data → mine/evaluate registered factors → iterate/backtest
         ↓
-append-only audit log + next-cycle state + demo output
+LLM selects a validated candidate and emits a structured trade decision (or explicit no-trade)
+        ↓
+deterministic risk gates (may veto) — includes real balance and position checks from exchange
+        ↓
+automatic paper executor on stock perps (no approval pause)
+        ↓
+order verification: query exchange for fill status before recording as filled
+        ↓
+state reconciliation: update local state only from confirmed exchange data
+        ↓
+append-only audit log + metrics + next-cycle state + demo output
 ```
 
 The deterministic path must run with a fixture and no credentials. Every external adapter must be replaceable by a fixture provider. The demo must show at least one accepted autonomous cycle and one rejected cycle, with the same orchestrator handling both.
 
-### Autonomous cycle contract
+## Account and credential architecture
 
-The runner must execute these stages in order:
+### Account hierarchy
 
-1. **Observe:** ingest a timestamped market/event snapshot.
-2. **Discover:** ask the proposer to generate bounded hypotheses from the registered factor vocabulary; evaluate candidates with deterministic code and iterate until the configured search budget is exhausted or a candidate passes validation.
-3. **Decide:** have the LLM choose among validated candidates and emit a structured side, instrument, quantity, and rationale; no validated candidate means no order.
-4. **Control:** apply deterministic sizing, exposure, freshness, loss, duplicate, and concentration gates. A veto is final and is logged.
-5. **Execute:** automatically submit an accepted decision to the in-memory paper broker and record the resulting fill/balance change.
-6. **Learn:** persist the cycle trace and bounded outcome summary so the next replayable cycle can use prior outcomes without mutating the factor registry.
+| Layer | Purpose | Status |
+|-------|---------|--------|
+| Main account | Human trading only. Never exposed to agent execution. | Active |
+| Agentic sub-account (AG-WZR3S0G5) | Isolated agent execution environment | Created, live API key exists |
+| Demo environment | Paper trading via `--paper-trading` flag | Pending: Demo API key for sub-account blocked by "account prohibited operation" |
 
-The LLM may choose and explain a validated candidate, but factor calculation, validation metrics, sizing, gate outcomes, and execution are deterministic and auditable.
+### Credential and isolation rules
 
-### Competition-period paper run
+- **The agent must use an isolated Agentic sub-account for execution.** The main account must never be used for agent order placement.
+- If the Agentic sub-account Demo API key cannot be configured (pending Bitget support resolution), **execution is blocked and clearly reported** — not silently redirected to the main account.
+- The `status` command must display which account is configured and whether credentials are valid.
+- Credentials load from `.env` via `python-dotenv` at CLI startup.
+- The manifest records which account and environment were used.
+- Never expose credentials in logs, manifests, paper records, or git.
 
-The project has two separate execution artifacts:
+### Pending resolution
 
-1. **Runnable demo:** a short, deterministic fixture run that proves the complete event → decision → execution flow and can run without credentials.
-2. **Competition-period paper run:** a continuously or regularly scheduled paper-trading process started during the official competition window. It writes append-only JSONL records to `artifacts/paper-trading/` and must not be replaced by screenshots or fabricated backfill.
+- Agentic sub-account Demo API key creation returns "account prohibited operation." Bitget support has been contacted. Until resolved, demo execution is blocked with a clear error message explaining the limitation.
+- A live API key for AG-WZR3S0G5 exists (stored in `.env` as `BITGET_API_KEY`) but cannot route through `--paper-trading` (returns "exchange environment is incorrect"). This confirms live and demo are separate environments.
 
-Each paper-run record must include the event timestamp, cycle ID, instrument, direction/side, decision price, quantity, pre/post balance, fees, slippage, execution status, validation summary, risk-gate results, and software/config version. Rejected cycles must also be recorded with the rejection reason.
+## Autonomous cycle contract
 
-The run must also produce a companion manifest containing actual start/end timestamps, timezone, code commit, and configuration hash so judges can inspect provenance. The UID does not automatically expose local logs to judges.
+The runner must execute these stages in order for each instrument per run:
 
-The first run should be started immediately. If fewer than two weeks remain before the deadline, report the actual duration honestly; two weeks is recommended, while running during the competition window is required. For qualification safety, the competition-period artifact must use Bitget Demo paper trading or another explicitly accepted paper-trading environment—not only the local simulator.
+### 1. Pre-flight
 
-## Core contracts
+- Validate credentials by calling `bgc --paper-trading account_overview --category USDT-FUTURES`.
+- If credentials are invalid or exchange is unreachable, fail with a clear error. Do not proceed.
+- Query current positions via `bgc --paper-trading position --action info --category USDT-FUTURES`.
+- Query pending orders via `bgc --paper-trading order --action open --category USDT-FUTURES`.
 
-### Factor hypothesis
+### 2. Reconcile
 
-Must include: stable ID, factor name, formula/configuration, lookback, target instrument universe, direction, entry/exit rule, rationale, and creation timestamp. Reject unknown factor names and out-of-range parameters.
+- Compare exchange positions with `positions_state.json`.
+- If divergence exists (e.g., position exists locally but not on exchange), log the divergence and trust exchange state.
+- Update local state from exchange truth.
 
-### Validation result
+### 3. Exit processing
 
-Must include: input snapshot ID, train/test windows, observations, return, Sharpe, Sortino, drawdown, turnover, fees, slippage, and rejection reasons. Metrics must identify whether they are observed, estimated, or targeted.
+- For each open position, fetch the current perp price from USDT-FUTURES ticker or candle data.
+- Evaluate stop-loss (3%), take-profit (5%), and max-hold (24h) conditions.
+- If exit condition met: place closing order via `bgc --paper-trading order --action place --category USDT-FUTURES`, verify the fill via `bgc --paper-trading order --action detail --orderId <id>`, then record the closed trade.
+- If exit order fails or is not filled, log the failure and retain the position.
 
-### Paper order
+### 4. Observe
 
-Must include: event ID, decision ID, timestamp, instrument, side, price, quantity, notional, pre/post balance, simulated fees, simulated slippage, and status.
+- Fetch rToken SPOT daily candles (90 bars) for each research instrument via `bgc market --action candles --category SPOT --symbol <rToken>`.
+- Build a MarketSnapshot from the latest bar for factor research.
+- Also fetch current perp prices for the execution instruments (for exit evaluation and order pricing).
 
-### Audit event
+### 5. Discover
 
-Use append-only JSON Lines. Every record references the previous stage by ID so a reviewer can replay event → hypothesis → validation → gate → execution.
+- LLM (Bedrock Claude) proposes bounded hypotheses from the registered factor vocabulary (momentum, mean_reversion, volatility_breakout, volume_spike, ema_crossover) using rToken research data.
+- Each hypothesis is validated against `PARAM_SCHEMAS`. Invalid proposals are rejected and logged.
+- Walk-forward validation: 70/30 train/test split, with fees, slippage, turnover, and drawdown.
+- A candidate must achieve Sharpe >= 0.5 and drawdown >= -0.20 to pass.
+- Validation metrics are computed on rToken data and labeled as `estimated`.
+
+### 6. Decide
+
+- LLM selects from validated candidates OR explicitly declines with rationale.
+- If no candidates pass validation: cycle status = `no_candidate`, logged with reason.
+- If LLM declines all candidates: cycle status = `no_candidate`, logged with LLM rationale.
+- **No-trade is the expected default outcome.** The system must not trade on every cycle merely to generate activity. If the validated factors do not support a trade with sufficient confidence, the correct outcome is: "No trade: conditions do not align."
+
+### 7. Control (risk gates)
+
+All 12 existing gates plus two new exchange-verified gates:
+
+| Gate | Source | Description |
+|------|--------|-------------|
+| factor_allowlist | Local | Factor must be in registered vocabulary |
+| data_freshness | Local | Snapshot must be within 24h |
+| min_sample_size | Local | Validation must have >= 20 observations |
+| validation_threshold | Local | Validation must have passed |
+| max_notional | Local | Order notional <= 10,000 USDT |
+| max_position | **Exchange** | Open positions (from exchange query) < 3 |
+| exposure_cap | **Exchange** | Total exposure (from exchange) <= 50,000 USDT |
+| cooldown | **Persisted** | Same instrument not traded within 300s (survives restarts) |
+| daily_loss_cap | Local | Daily realized loss < 2,000 USDT |
+| duplicate_suppression | **Persisted** | Same event+instrument+side not already processed (survives restarts) |
+| concentration_guard | **Exchange** | Instrument positions (from exchange) < 2 |
+| max_quantity | Local | Quantity <= bounded maximum |
+| **balance_check** (new) | **Exchange** | Available balance (from exchange) >= order notional |
+| **pending_order_check** (new) | **Exchange** | No conflicting pending order for same instrument |
+
+A rejected decision must be logged with the specific gate that failed and the values that caused the failure.
+
+### 8. Execute
+
+- Place paper order via `bgc --paper-trading order --action place --category USDT-FUTURES --symbol <perp> --side <side> --orderType limit --price <price> --qty <qty> --timeInForce gtc --posSide <long|short>`.
+- Record the order submission timestamp and bgc response.
+- The order uses the execution instrument (perp), not the research instrument (rToken).
+
+### 9. Verify
+
+- After order placement, query order status via `bgc --paper-trading order --action detail --orderId <id>`.
+- Distinguish between: submitted, accepted, partially filled, fully filled, rejected, cancelled, timeout, failure.
+- Update local state only after confirmed fill.
+- If order is not filled, log the status and do not record as a successful trade.
+- If order status query fails (network error), log the error and mark the order as `unverified`.
+
+### 10. Log and explain
+
+- Write complete cycle record to `paper_log.jsonl` with:
+  - Research instrument (rToken) and execution instrument (perp)
+  - Which LLM provider and model were used (never "fixture" in demo mode)
+  - The LLM's raw rationale for the decision
+  - All gate results with values and thresholds
+  - Order verification status (`verified_filled`, `unverified`, `rejected`, etc.)
+  - Validation metrics labeled as `estimated` (backtest) vs execution metrics labeled as `observed`
+
+## Execution mode boundaries
+
+### Demo mode (`--mode demo`)
+
+- **LLM:** Requires AWS Bedrock (Claude Sonnet 4.6). If Bedrock is unavailable, the run fails with a clear error. No silent fallback to fixtures.
+- **Data:** Fetches rToken SPOT candles via bgc for research. Fetches perp prices for execution.
+- **Execution:** Places real paper orders on Bitget Demo via `bgc --paper-trading` using the Agentic sub-account.
+- **Account:** Requires valid Agentic sub-account Demo credentials. Blocked if unavailable.
+- **Exchange verification:** Queries positions, balances, and order status from Bitget Demo.
+- **Manifest:** Records `llm_provider: "aws-bedrock"`, `llm_model: "us.anthropic.claude-sonnet-4-6"`, `llm_mode: "live"`, `account: "AG-WZR3S0G5"`, `environment: "demo"`.
+
+### Fixture mode (`--mode fixture`)
+
+- **LLM:** Uses `FixtureLLMProvider`. Explicitly labeled as deterministic test mode in all outputs.
+- **Data:** Uses bundled fixture data. No bgc calls.
+- **Execution:** Uses in-memory paper broker. No Bitget interaction.
+- **Account:** No credentials required.
+- **Manifest:** Records `llm_provider: "fixture"`, `llm_model: "fixture"`, `llm_mode: "fixture"`.
+
+### CLI error-handling contract
+
+Demo mode fails loudly when dependencies fail — but the top-level CLI must never leak an unhandled exception. The contract:
+
+- `run_paper_session()` raises `RuntimeError` or `OSError` when bgc, network, or exchange calls fail.
+- `__main__.main()` catches these at the CLI boundary and returns exit code 1 with a printed error message.
+- The CLI must return 0 (success) or 1 (controlled failure). An uncaught exception escaping to the user is a bug.
+- Tests for this boundary mock `subprocess.run` in `factor_atlas.runner` so they are deterministic and do not depend on network availability.
+
+### Rules
+
+- No silent fallback from demo to fixture behavior. If any demo dependency fails (LLM, exchange, credentials), the run fails loudly (exit code 1 with error message).
+- Fixture mode is for reproducible demonstrations and testing only. It must never be presented as competition-period evidence.
+
+## LLM provider contract
+
+### Provider selection
+
+- Demo mode requires AWS Bedrock. Failure is fatal, not silent.
+- Fixture mode uses `FixtureLLMProvider` and is explicitly labeled.
+
+### LLM boundaries
+
+- The LLM may propose factor configurations from the registered vocabulary.
+- The LLM may select from validated candidates or explicitly decline.
+- The LLM may not generate arbitrary runtime trading code.
+- The LLM may not bypass risk gates or override validation failures.
+- The LLM may not invent factors outside the registered vocabulary.
+- If the LLM returns invalid JSON or references non-existent candidates, the response is rejected and logged.
+
+## Factor Agent objective
+
+FactorAtlas performs **constrained factor search within a registered library**, not open-ended factor discovery.
+
+The registered vocabulary contains 5 factors: momentum, mean_reversion, volatility_breakout, volume_spike, ema_crossover. Each has bounded parameter ranges defined in `PARAM_SCHEMAS`.
+
+The LLM's role is to:
+1. Analyze the rToken market snapshot and propose configurations of registered factors.
+2. Select from validated candidates based on their backtest metrics.
+3. Provide rationale for its selection or explicit no-trade reasoning.
+
+The product must describe this honestly as "agent-guided factor evaluation within a bounded library." It must not claim open-ended factor invention.
+
+The complete flow:
+
+```text
+rToken market data → Snapshot → LLM proposes bounded hypotheses
+  → Deterministic walk-forward validation on rToken data → Signal evaluation
+    → LLM trade/no-trade decision → Risk + account checks (exchange-verified)
+      → Stock-perp order execution → Exchange verification → State reconciliation
+        → Metrics and explanation
+```
+
+## Infrastructure and deployment
+
+### Scheduling
+
+The competition-period paper runner must not depend on the user's laptop being awake.
+
+**Primary:** GitHub Actions scheduled workflow (`.github/workflows/daily-run.yml`), running twice daily at 10:00 UTC and 22:00 UTC. This is batch execution on a schedule, not a continuously running service.
+
+**Fallback:** Manual invocation via `uv run python -m factor_atlas run --mode demo`.
+
+**Local (development only):** A launchd plist exists at `~/Library/LaunchAgents/com.factor-atlas.daily-run.plist` for local development but is not committed to the repository and must not be relied on for competition-period evidence.
+
+### State persistence in GitHub Actions
+
+`positions_state.json` tracks open positions and closed trades across runs. For GitHub Actions:
+
+**Design:** Use GitHub Actions artifacts for state persistence rather than committing to the repository.
+
+- Each workflow run uploads `positions_state.json` and `artifacts/paper-trading/` as artifacts.
+- The next run downloads the previous run's artifact to restore state.
+- If no previous artifact exists (first run), start with empty state.
+
+**Safeguards:**
+- **Concurrent runs:** The workflow uses `concurrency: { group: paper-trading, cancel-in-progress: false }` to queue runs rather than overlap.
+- **Failed jobs:** If a run fails mid-execution, the state from the previous successful run is used. No partial state is persisted.
+- **State corruption:** The runner validates `positions_state.json` on load. Corrupt or unparseable state is logged and replaced with empty state.
+- **Audit-log retention:** Paper logs and audit logs are uploaded as artifacts with a 90-day retention policy.
+- **Secret safety:** `BITGET_API_KEY`, `BITGET_SECRET_KEY`, `BITGET_PASSPHRASE`, and AWS credentials are stored as GitHub Actions secrets, never in the repository.
+
+### Health and observability
+
+No daemon or always-on process is required. Observability comes from:
+
+1. **GitHub Actions run history** — visible, auditable, timestamped.
+2. **`status` CLI command** — queries local state + exchange state and prints a human-readable summary.
+3. **`history` CLI command** — summarizes all sessions with cumulative metrics.
+4. **`explain <run-id>` CLI command** — prints a narrative explanation of one session's decisions.
+5. **Manifest files** — each run produces a `manifest.json` with timestamps, config hash, git commit, metrics, and LLM provider info.
+
+## Product and judge-facing UX
+
+### CLI commands
+
+| Command | Purpose |
+|---------|---------|
+| `factor-atlas run --mode demo` | Run one trading session with real LLM and Bitget Demo |
+| `factor-atlas run --mode fixture` | Deterministic demo, explicitly labeled as test mode |
+| `factor-atlas run --dry-run` | Validate config, credentials, and exit |
+| `factor-atlas status` | System state: environment, credentials, positions, last run, metrics |
+| `factor-atlas history` | Summary of all sessions: dates, trades, cumulative performance |
+| `factor-atlas explain <run-id>` | Human-readable narrative of one session's decisions |
+
+### Status command output
+
+```
+FactorAtlas Status
+  Environment: Bitget Demo (USDT-FUTURES execution)
+  Account: AG-WZR3S0G5 (Agentic sub-account)
+  Credentials: valid (last checked 2026-09-14T10:00:00Z)
+  LLM: us.anthropic.claude-sonnet-4-6 (AWS Bedrock)
+
+  Open positions (from exchange):
+    AAPLUSDT: long, entry=$330.33, qty=1, hold=14.2h, unrealized=-0.8%
+    METAUSDT: short, entry=$641.76, qty=1, hold=8.0h, unrealized=+1.2%
+
+  Cumulative performance (14 sessions, 8 closed trades):
+    Win rate: 62.5%
+    Sharpe: 1.23
+    Sortino: 1.87
+    Max drawdown: -3.2%
+    Total PnL: +$412.50
+
+  Last run: 2026-09-14T10:00:12Z (session ba1b4022)
+  Next scheduled: GitHub Actions at 2026-09-14T22:00:00Z
+  Logs: artifacts/paper-trading/
+```
+
+### Explain command output
+
+```
+Session ba1b4022 (2026-09-14 10:00 UTC)
+  LLM: us.anthropic.claude-sonnet-4-6 (AWS Bedrock)
+  Account: AG-WZR3S0G5 (Demo)
+
+  RAAPLUSDT → AAPLUSDT:
+    Research: rToken SPOT candles (90 bars)
+    Hypotheses: mean_reversion (short, est. Sharpe=5.07), momentum (long, est. Sharpe=2.45)
+    LLM selected: mean_reversion (short) — "Superior risk-adjusted return, lower drawdown"
+    Risk gates: 14/14 passed
+    Execution: sell 1 AAPLUSDT @ $330.33 → orderId=1483216288468062208
+    Verification: FILLED at $330.33
+
+  RNVDAUSDT → NVDAUSDT:
+    Research: rToken SPOT candles (90 bars)
+    Hypotheses: volatility_breakout (long, est. Sharpe=0.31)
+    LLM decision: NO TRADE — "Sharpe below threshold, insufficient signal strength"
+    Risk gates: not evaluated (no validated candidate)
+
+  Summary: 1 trade executed, 1 no-trade. Research on rToken SPOT, execution on stock perps.
+```
+
+## Metrics
+
+### Required metrics (computed from verified closed perp trades only)
+
+| Metric | Formula | Notes |
+|--------|---------|-------|
+| total_trades | Count of closed trades | Only verified fills |
+| win_rate | wins / total_trades | A win is pnl > 0 |
+| total_pnl | Sum of all closed trade PnL | After fees and slippage |
+| avg_pnl | total_pnl / total_trades | Per-trade average |
+| sharpe_ratio | mean(returns) / std(returns) * sqrt(365) | Annualized |
+| sortino_ratio | mean(returns) / downside_std(returns) * sqrt(365) | Annualized, downside only |
+| max_drawdown | Maximum peak-to-trough decline in equity curve | From cumulative PnL series |
+| profit_factor | gross_profit / gross_loss | Ratio of winning to losing PnL |
+| turnover | Sum of abs(trade notional) / average equity | Over the measurement period |
+| avg_hold_hours | Mean holding duration of closed trades | In hours |
+
+### Metric labeling
+
+- `observed`: computed from actual closed perp trades during the competition period.
+- `estimated`: computed from backtest validation on rToken research data.
+- `targeted`: design goals or thresholds.
+
+The manifest and paper log must use these labels. Backtest Sharpe from validation is `estimated`. Sharpe from closed trades is `observed`.
+
+### Equity curve
+
+The manifest must include an `equity_curve` array: a list of `[timestamp, cumulative_pnl]` pairs from closed trades, enabling drawdown and Sharpe computation to be independently verified.
+
+## Verified bgc commands
+
+These commands have been verified via `bgc discover` against the installed CLI. Note: `order --action detail` only accepts `orderId` or `clientOid` — it does not take `--category` (unlike `open`, `fills`, and `place`).
+
+| Purpose | Command |
+|---------|---------|
+| Account overview (balance + positions) | `bgc --paper-trading account_overview --category USDT-FUTURES` |
+| Current positions | `bgc --paper-trading position --action info --category USDT-FUTURES` |
+| Pending orders | `bgc --paper-trading order --action open --category USDT-FUTURES` |
+| Order detail/status | `bgc --paper-trading order --action detail --orderId <id>` |
+| Fill history | `bgc --paper-trading order --action fills --category USDT-FUTURES` |
+| Place order | `bgc --paper-trading order --action place --category USDT-FUTURES --symbol <sym> --side <side> --orderType limit --price <price> --qty <qty> --timeInForce gtc --posSide <long\|short>` |
+| SPOT candles (research) | `bgc market --action candles --category SPOT --symbol <rToken> --interval 1D --limit 90` |
+| FUTURES candles (execution pricing) | `bgc market --action candles --category USDT-FUTURES --symbol <perp> --interval 1D --limit 5` |
+
+## Current findings and required fixes
+
+### 1. Demo orders not verified
+
+**Current:** `_place_order_bgc` returns an orderId; code assumes fill without checking.
+**Fix:** Add `_verify_order_bgc(order_id)` using `bgc --paper-trading order --action detail`. Update local state only on confirmed fill.
+
+### 2. Local state ≠ exchange state
+
+**Current:** `positions_state.json` and `BrokerState` are authoritative. Exchange is never queried.
+**Fix:** Add `exchange.py` module with bgc wrappers for verified commands above. Run reconciliation at start of every demo run. Exchange is authoritative; local state is a cache.
+
+### 3. Incomplete metrics
+
+**Current:** Missing Sortino, turnover, equity curve. Validation layer computes Sortino/turnover but manifest metrics do not.
+**Fix:** Add Sortino and turnover to `compute_metrics`. Add equity curve to manifest. Only count verified fills.
+
+### 4. Formatting issue
+
+**Current:** Fixed. `runner.py` now passes `ruff format --check` (3 long lines wrapped, 2026-09-14).
+**Status:** Resolved.
+
+### 5. Silent LLM fallback
+
+**Current:** Demo mode catches BedrockProvider exceptions and silently falls back to FixtureLLMProvider. Manifest does not record which provider was used.
+**Fix:** Remove fallback in demo mode — fail loudly. Add `llm_provider`, `llm_model`, `llm_mode` fields to manifest.
+
+### 6. Market data/execution mixing
+
+**Current:** Demo mode fetches SPOT rToken candles and uses them for factor validation, but also uses those prices for exit evaluation on perp positions — conflating research and execution prices.
+**Fix:** Use rToken SPOT candles for research/factor validation. Use USDT-FUTURES candle prices for exit evaluation and order pricing. Keep the two layers explicitly separate in code and logs.
 
 ## Risk gates
 
-Minimum gates: factor allowlist, data freshness, minimum sample size, validation threshold, maximum notional, maximum position, exposure cap, cooldown, daily loss cap, duplicate-event suppression, and correlation/concentration guard. A rejected decision must be logged, not silently discarded.
+Minimum gates (existing 12 + 2 new):
+
+factor_allowlist, data_freshness, min_sample_size, validation_threshold, max_notional, max_position (exchange-verified), exposure_cap (exchange-verified), cooldown (persisted across runs), daily_loss_cap, duplicate_suppression (persisted), concentration_guard (exchange-verified), max_quantity, **balance_check** (exchange-verified), **pending_order_check** (exchange-verified).
 
 ## Testing strategy
 
-- Unit tests for schemas, factor calculations, metrics, and every gate.
+- Unit tests for schemas, factor calculations, metrics (including Sortino, turnover), and every gate.
 - Fixture tests for the complete event-to-paper-order flow.
 - Property-style checks for no negative balances and bounded quantities.
 - Replay test: identical fixture and config produce identical audit output.
 - Adapter tests must mock network responses; no test may require live credentials.
+- Exchange module tests must mock bgc responses.
+- Status/history/explain command tests with fixture data.
+
+**Current test status (verified 2026-09-14):** 251 tests pass. `ruff format --check` passes. `ruff check` passes. mypy not yet verified (internal error).
 
 ## Acceptance criteria
 
 1. A clean checkout can run the simulator with `uv sync` and `uv run pytest`.
 2. A fixture event produces a complete trace and either a valid paper order or a logged rejection.
 3. The LLM cannot introduce a factor outside the registry or bypass a gate.
-4. No live order path exists in the MVP.
-5. The demo clearly shows an autonomous accepted cycle: event, proposed hypotheses, iterative factor evaluation/backtest, LLM-selected validated candidate, risk decision, automatic simulated execution, and audit record.
-6. The demo also shows a rejected cycle where a risk or validation gate prevents execution and records why.
-7. The runner can execute multiple fixture cycles without manual intervention and produces deterministic replay output for the same inputs/configuration.
-8. A separate competition-period paper runner produces real timestamped paper logs under `artifacts/paper-trading/`; fixture output is never presented as competition-period activity.
-9. Submission materials include the runnable demo link, paper-log link/export, and compliant X post link.
+4. No live order path exists.
+5. Demo mode uses real LLM (Bedrock) and fails loudly if unavailable.
+6. Demo mode uses rToken SPOT data for research and USDT-FUTURES for execution — clearly separated in logs.
+7. Orders are verified via exchange query; local state updated only on confirmed fill.
+8. Exchange state (positions, balances) is queried at start of each run and used in risk gates.
+9. The agent uses an isolated Agentic sub-account. Main account is never used for execution.
+10. The `status` command shows environment, account, credentials, positions, metrics, and next run time.
+11. The `explain` command shows a human-readable narrative of any session's decisions.
+12. Metrics include Sharpe, Sortino, drawdown, turnover, and equity curve — computed from verified closed trades only.
+13. No-trade decisions are first-class outcomes with specific reasoning in the paper log.
+14. The manifest records LLM provider, model, mode, account, and environment.
+15. GitHub Actions workflow runs the agent on schedule during the competition period.
+16. All tests pass, ruff check passes, ruff format passes, mypy passes.
+17. README and documentation match the actual system behavior.
+18. Fixture mode is explicitly labeled and never presented as competition evidence.
+
+## Conflicts with existing spec
+
+| Previous statement | Conflict | Resolution |
+|-------------------|----------|------------|
+| "data, factor metrics, risk controls, orders, fills, and paper log all refer to the same perp instrument universe" | Revised: research uses rToken SPOT, execution uses USDT-FUTURES perps | Both layers are explicit and labeled. No conflation. |
+| "Agentic account is optional" | Revised: Agentic account is required for agent execution | Main account must not be used. If sub-account unavailable, execution is blocked. |
+| Risk gates use BrokerState (local) | New gates require exchange state | Add exchange state to risk gate kwargs. Existing gates unchanged for fixture mode. |
+| "Validation result must include Sortino, turnover" | metrics.py (manifest metrics) does not compute these | Add to compute_metrics. |
 
 ## Open questions
 
-- Exact Bitget rToken symbols and history availability must be confirmed before implementing the adapter.
-- Final LLM provider/model must be selected and recorded only after the coding agent verifies available credentials and SDK behavior.
-- Playbook access is not required for FactorAtlas. It is a supporting backtesting product for Alpha Factory, not the source of FactorAtlas’s Agentic Trading execution evidence.
-- The Bitget Demo adapter is mandatory for the qualification evidence unless the organizers explicitly confirm that local simulation alone satisfies the paper-log requirement. The local simulator remains mandatory for deterministic development and the runnable demo.
+- Agentic sub-account Demo API key: waiting Bitget support confirmation. Until resolved, demo execution is blocked (not redirected to main account).
+- rToken SPOT Demo execution: waiting Bitget support confirmation. Does not affect the current architecture (research on SPOT, execution on FUTURES).
+- GitHub Actions artifacts: confirm artifact download/upload works for cross-run state persistence. Test with a manual workflow run before relying on it.
 
 ## Sources
 
 - Local official reference: `resources/agent_hub/docs/architecture.md`
 - Local official reference: `resources/agent_hub/docs/getting-started.md`
+- Local operational reference: `resources/helios-terminal/` (patterns only, not implementation)
 - Bitget Agent Hub: https://www.bitget.com/activity-hub/agent-hub
 - Bitget Demo API: https://www.bitget.com/docs/classic/demo-trading/rest-api
+- Bitget S2 hackathon track descriptions: https://www.bitget.com/uk/activity-hub/hackathon

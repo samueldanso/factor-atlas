@@ -6,7 +6,7 @@ Read this file before changing code. `CLAUDE.md` points here, and OpenCode/Codex
 
 FactorAtlas is a Bitget AI Genesis Season 2 submission for **Agentic Trading → Factor Discovery Agent**, deadline **2026-09-21 UTC+8**.
 
-Build an agent that proposes factor hypotheses for continuously traded tokenized US-stock markets, validates them with deterministic Python research code, applies explicit risk gates, and records a complete paper-trading event → decision → execution trace.
+Build an agent that proposes factor hypotheses for continuously traded Bitget US-stock markets, validates them with deterministic Python research code, applies explicit risk gates, and records a complete paper-trading event → decision → execution trace.
 
 The differentiator is not an LLM chat wrapper. It is a reproducible factor-discovery and execution loop whose decisions can be inspected, replayed, and rejected by risk controls.
 
@@ -90,6 +90,12 @@ The layers are separate:
 - A separate Demo API key is required for the competition-period paper-log evidence unless organizers explicitly approve another paper-trading source. An Agentic account is optional for a final autonomous-execution demo and must not silently replace the Demo evidence path.
 - Playbook login/key/subaccount is not required for FactorAtlas. Use Playbook for Alpha Factory research only; do not use a Playbook credential as a substitute for Agentic paper-execution evidence.
 - The competition-period paper runner must write actual run records under `artifacts/paper-trading/`. Never manufacture or backfill competition-period history from fixtures.
+
+### Instrument policy
+
+- FactorAtlas qualification evidence uses Bitget Demo USDT-margined stock perpetuals end-to-end: market data, factor metrics, risk controls, orders, fills, and paper logs must refer to the same perp instrument universe.
+- Reality rTokens such as `RAAPLUSDT` are separate SPOT/MARGIN instruments. Their public market data may be used for optional comparison research, but rToken metrics must not be presented as stock-perp execution results.
+- Never claim that `AAPLUSDT`/`NVDAUSDT` perp orders are rToken orders. Label the instrument and category in every log and submission artifact.
 
 Expected local variable names:
 

@@ -8,5 +8,7 @@ __pycache__/
 data/
 artifacts/
 resources/
+.superpowers/
+tasks/
 
 /resources/

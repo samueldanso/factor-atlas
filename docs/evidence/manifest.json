@@ -1,0 +1,54 @@
+{
+  "run_id": "802bff3d-2c99-4d52-a87f-89232a1d6552",
+  "start_timestamp": "2026-09-14T09:29:06.756013+00:00",
+  "end_timestamp": "2026-09-14T09:30:17.675694+00:00",
+  "timezone": "UTC",
+  "mode": "demo",
+  "instruments": [
+    "RAAPLUSDT",
+    "RMETAUSDT",
+    "RNVDAUSDT",
+    "RTSLAUSDT"
+  ],
+  "execution_instruments": [
+    "AAPLUSDT",
+    "METAUSDT",
+    "NVDAUSDT",
+    "TSLAUSDT"
+  ],
+  "cycles_completed": 4,
+  "accepted_count": 3,
+  "rejected_count": 1,
+  "code_commit": "415e1e4",
+  "config_hash": "sha256:f592798c28a8f63b",
+  "software_version": "0.1.0",
+  "performance_metrics": {
+    "total_trades": 3,
+    "win_rate": 0.6667,
+    "total_pnl": "-7.1187",
+    "avg_pnl": "-2.3729",
+    "sharpe_ratio": 3.4644,
+    "sortino_ratio": 4.7903,
+    "max_drawdown": 7.1111,
+    "profit_factor": 0.2055,
+    "turnover": 1548.6371,
+    "avg_hold_hours": 25.01,
+    "equity_curve": [
+      [
+        "2026-09-14T09:29:15.974259+00:00",
+        1.26
+      ],
+      [
+        "2026-09-14T09:29:15.974259+00:00",
+        -7.7
+      ],
+      [
+        "2026-09-14T09:29:15.974259+00:00",
+        -7.1187
+      ]
+    ]
+  },
+  "llm_provider": "aws-bedrock",
+  "llm_model": "us.anthropic.claude-sonnet-4-6",
+  "llm_mode": "live"
+}
