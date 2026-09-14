@@ -1404,11 +1404,21 @@ jobs:
 </html>
 ```
 
-- [ ] **Step 3: Enable GitHub Pages**
+- [ ] **Step 3: Enable GitHub Pages (source: GitHub Actions)**
 
-Run: `gh api repos/samueldanso/factor-atlas/pages -X POST -f source.branch=main -f source.path=/ --silent 2>/dev/null || echo "Pages may already be configured"`
+The workflow uses `actions/deploy-pages` which requires Pages source set to "GitHub Actions" (NOT "deploy from branch"). Set it via API:
 
-Or configure via GitHub settings: Settings → Pages → Source: GitHub Actions.
+```bash
+gh api repos/samueldanso/factor-atlas/pages -X PUT \
+  -f build_type=workflow \
+  --silent 2>/dev/null || \
+gh api repos/samueldanso/factor-atlas/pages -X POST \
+  -f build_type=workflow \
+  --silent 2>/dev/null || \
+echo "Pages may need manual config: Settings → Pages → Source: GitHub Actions"
+```
+
+If the API call fails, configure manually: GitHub repo → Settings → Pages → Build and deployment → Source: "GitHub Actions".
 
 - [ ] **Step 4: Update README.md evidence links**
 
