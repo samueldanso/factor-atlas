@@ -1,0 +1,61 @@
+name: Paper Trading Runner
+
+on:
+  schedule:
+    # Every 4 hours
+    - cron: '0 */4 * * *'
+  workflow_dispatch: # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  paper-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install bgc CLI
+        run: npm install -g @bitget-ai/bitget-agent-cli
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run paper session (1 round, 4 cycles)
+        env:
+          BITGET_API_KEY: ${{ secrets.BITGET_API_KEY }}
+          BITGET_SECRET_KEY: ${{ secrets.BITGET_SECRET_KEY }}
+          BITGET_PASSPHRASE: ${{ secrets.BITGET_PASSPHRASE }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        run: |
+          uv run python -m factor_atlas run \
+            --mode demo \
+            --cycles 4 \
+            --continuous \
+            --max-rounds 1
+
+      - name: Generate report for latest run
+        run: |
+          LATEST_RUN=$(ls -t artifacts/paper-trading/runs/ | head -1)
+          if [ -n "$LATEST_RUN" ]; then
+            uv run python -m factor_atlas report \
+              --run-dir "artifacts/paper-trading/runs/$LATEST_RUN"
+          fi
+
+      - name: Commit evidence
+        run: |
+          git config user.name "FactorAtlas Bot"
+          git config user.email "bot@factor-atlas.dev"
+          git add artifacts/paper-trading/logs/ artifacts/paper-trading/runs/ artifacts/paper-trading/positions_state.json
+          git diff --cached --quiet || git commit -m "evidence: paper trading run $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git pull --rebase origin main || true
+          git push
