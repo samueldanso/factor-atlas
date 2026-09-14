@@ -30,6 +30,7 @@ def validate_llm_decision(
     candidates: list[tuple[FactorHypothesis, ValidationResult]],
     snapshot: MarketSnapshot,
     cycle_id: str,
+    quantity: Decimal | None = None,
 ) -> TradeDecision | None:
     """Validate an LLM decision dict against the validated candidates.
 
@@ -80,7 +81,7 @@ def validate_llm_decision(
             hypothesis_id=hyp.hypothesis_id,
             instrument=snapshot.instrument,
             side=side,
-            quantity=Decimal(1),
+            quantity=quantity or Decimal(1),
             price=snapshot.close,
             rationale=rationale,
             timestamp=datetime.now(tz=UTC),
@@ -115,6 +116,7 @@ class LLMDecisionProvider:
         snapshot: MarketSnapshot,
         candidates: list[tuple[FactorHypothesis, ValidationResult]],
         cycle_id: str,
+        quantity: Decimal | None = None,
     ) -> TradeDecision | None:
         """Ask the LLM to select from validated candidates.
 
@@ -142,7 +144,7 @@ class LLMDecisionProvider:
             logger.warning("LLM returned non-dict top-level for decide")
             return None
 
-        return validate_llm_decision(parsed, candidates, snapshot, cycle_id)
+        return validate_llm_decision(parsed, candidates, snapshot, cycle_id, quantity)
 
 
 __all__ = [

@@ -564,20 +564,40 @@ def _should_exit(
     current_price: Decimal,
     now: datetime,
     risk_config: RiskConfig,
+    atr: float | None = None,
 ) -> tuple[bool, str]:
-    """Return (should_exit, reason) for an open position."""
+    """Return (should_exit, reason) for an open position.
+
+    Uses ATR-based SL/TP when ``atr`` is provided, otherwise falls back
+    to percentage-based thresholds.
+    """
     cost = pos.entry_price
     if cost == 0:
         return False, ""
-    if pos.side == "buy":
-        unrealized_pct = float((current_price - pos.entry_price) / cost)
-    else:
-        unrealized_pct = float((pos.entry_price - current_price) / cost)
 
-    if unrealized_pct <= -risk_config.stop_loss_pct:
-        return True, f"stop_loss ({unrealized_pct:.2%})"
-    if unrealized_pct >= risk_config.take_profit_pct:
-        return True, f"take_profit ({unrealized_pct:.2%})"
+    if pos.side == "buy":
+        unrealized = current_price - pos.entry_price
+    else:
+        unrealized = pos.entry_price - current_price
+
+    # ATR-based exits (preferred)
+    if atr is not None and atr > 0:
+        sl_distance = Decimal(str(risk_config.sl_atr_mult * atr))
+        tp_distance = Decimal(str(risk_config.tp_atr_mult * atr))
+        if unrealized <= -sl_distance:
+            pct = float(unrealized / cost)
+            return True, f"stop_loss_atr ({pct:.2%}, SL={sl_distance:.2f})"
+        if unrealized >= tp_distance:
+            pct = float(unrealized / cost)
+            return True, f"take_profit_atr ({pct:.2%}, TP={tp_distance:.2f})"
+    else:
+        # Percentage fallback
+        unrealized_pct = float(unrealized / cost)
+        if unrealized_pct <= -risk_config.stop_loss_pct:
+            return True, f"stop_loss ({unrealized_pct:.2%})"
+        if unrealized_pct >= risk_config.take_profit_pct:
+            return True, f"take_profit ({unrealized_pct:.2%})"
+
     hold_h = (now - pos.entry_time).total_seconds() / 3600
     if hold_h >= risk_config.max_hold_hours:
         return True, f"max_hold ({hold_h:.1f}h)"

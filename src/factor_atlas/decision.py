@@ -35,6 +35,7 @@ class DecisionProvider(Protocol):
         snapshot: MarketSnapshot,
         candidates: list[tuple[FactorHypothesis, ValidationResult]],
         cycle_id: str,
+        quantity: Decimal | None = None,
     ) -> TradeDecision | None:
         """Select one validated candidate and return a TradeDecision, or None if no trade."""
         ...
@@ -56,6 +57,7 @@ class FixtureDecisionProvider:
         snapshot: MarketSnapshot,
         candidates: list[tuple[FactorHypothesis, ValidationResult]],
         cycle_id: str,
+        quantity: Decimal | None = None,
     ) -> TradeDecision | None:
         """Pick the candidate with the highest Sharpe ratio.
 
@@ -81,7 +83,7 @@ class FixtureDecisionProvider:
             hypothesis_id=best_hyp.hypothesis_id,
             instrument=snapshot.instrument,
             side=side,
-            quantity=Decimal(1),
+            quantity=quantity or Decimal(1),
             price=snapshot.close,
             rationale=(
                 f"Best Sharpe={best_val.metrics.sharpe_ratio.value:.4f} "
