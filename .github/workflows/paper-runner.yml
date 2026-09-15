@@ -56,7 +56,7 @@ jobs:
         run: |
           git config user.name "FactorAtlas Bot"
           git config user.email "bot@factor-atlas.dev"
-          git add artifacts/paper-trading/logs/ artifacts/paper-trading/runs/ artifacts/paper-trading/positions_state.json
+          git add -f artifacts/paper-trading/logs/ artifacts/paper-trading/runs/ artifacts/paper-trading/positions_state.json
           git diff --cached --quiet || git commit -m "evidence: paper trading run $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git pull --rebase origin main || true
           git push
