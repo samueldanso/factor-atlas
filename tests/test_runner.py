@@ -267,14 +267,17 @@ class TestDemoLLMFailure:
     """Demo mode must not silently fall back to fixture LLM."""
 
     def test_demo_mode_raises_when_bedrock_fails(self, tmp_path: Path) -> None:
-        """Demo mode must fail loudly when BedrockProvider init fails."""
+        """Demo mode must fail loudly when LLM provider init fails."""
         from unittest.mock import patch
 
         from factor_atlas.__main__ import main
 
-        with patch(
-            "factor_atlas.runner.BedrockProvider",
-            side_effect=RuntimeError("Bedrock unavailable"),
+        with (
+            patch.dict("os.environ", {"BITGET_QWEN_API_KEY": ""}, clear=False),
+            patch(
+                "factor_atlas.runner.BedrockProvider",
+                side_effect=RuntimeError("Bedrock unavailable"),
+            ),
         ):
             rc = main(
                 ["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)]

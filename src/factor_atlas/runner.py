@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -32,6 +33,7 @@ from factor_atlas.llm import (
     FixtureLLMProvider,
     LLMDecisionProvider,
     LLMProposer,
+    QwenProvider,
 )
 from factor_atlas.metrics import compute_metrics, make_closed_trade
 from factor_atlas.orchestrator import CycleResult, run_cycles
@@ -877,13 +879,25 @@ def run_paper_session(
             raise RuntimeError(f"Pre-flight exchange query failed: {e}") from e
 
     if mode == "demo":
-        llm_provider = BedrockProvider()
-        print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
-        llm_info: dict[str, str] = {
-            "llm_provider": "aws-bedrock",
-            "llm_model": llm_provider.model_name,
-            "llm_mode": "live",
-        }
+        # Prefer Qwen (Bitget-provided) over Bedrock (AWS)
+        qwen_key = os.environ.get("BITGET_QWEN_API_KEY", "")
+        llm_provider: BedrockProvider | QwenProvider | FixtureLLMProvider
+        if qwen_key:
+            llm_provider = QwenProvider()
+            print(f"  LLM: {llm_provider.model_name} (Bitget Qwen)")
+            llm_info: dict[str, str] = {
+                "llm_provider": "bitget-qwen",
+                "llm_model": llm_provider.model_name,
+                "llm_mode": "live",
+            }
+        else:
+            llm_provider = BedrockProvider()
+            print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
+            llm_info = {
+                "llm_provider": "aws-bedrock",
+                "llm_model": llm_provider.model_name,
+                "llm_mode": "live",
+            }
     else:
         llm_provider = FixtureLLMProvider()  # type: ignore[assignment]
         llm_info = {

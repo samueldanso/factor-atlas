@@ -12,6 +12,7 @@ from factor_atlas.llm.prompts import (
 )
 from factor_atlas.llm.proposer import LLMProposer, validate_llm_hypothesis
 from factor_atlas.llm.provider import FixtureLLMProvider, LLMProvider, strip_code_fence
+from factor_atlas.llm.qwen_provider import QwenProvider
 
 __all__ = [
     "DECIDE_SYSTEM",
@@ -21,6 +22,7 @@ __all__ = [
     "LLMDecisionProvider",
     "LLMProposer",
     "LLMProvider",
+    "QwenProvider",
     "decide_user_prompt",
     "propose_user_prompt",
     "strip_code_fence",
