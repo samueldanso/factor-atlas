@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FactorAtlas — Autonomous Factor Discovery Agent</title>
+  <meta name="description" content="Live dashboard for the FactorAtlas autonomous trading agent. Bitget AI Genesis Season 2 — Track 2: Agentic Trading.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#0A0C10', raised: '#0F1218', overlay: '#161B22' },
+            border: { DEFAULT: '#1E2330', bright: '#2A3040' },
+            accent: { gold: '#E8B931', amber: '#D4A017', dim: '#A68A2B' },
+            pass: '#34D399',
+            fail: '#F87171',
+            buy: '#34D399',
+            sell: '#F87171',
+            muted: '#6B7280',
+          },
+          fontFamily: {
+            mono: ['SF Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', 'monospace'],
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0A0C10; font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2A3040; border-radius: 3px; }
+    .tab-active { color: #E8B931; border-bottom: 2px solid #E8B931; }
+    .tab-inactive { color: #6B7280; border-bottom: 2px solid transparent; }
+    .tab-inactive:hover { color: #9CA3AF; }
+    @keyframes pulse-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .live-dot { animation: pulse-live 2s ease-in-out infinite; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-in { animation: fade-in 0.3s ease-out forwards; }
+    .gate-bar { transition: width 0.6s ease-out; }
+    .expand-toggle { cursor: pointer; user-select: none; }
+    .expand-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+    .expand-content.open { max-height: 2000px; }
+  </style>
+</head>
+<body class="text-gray-300 min-h-screen">
+  <div id="app" class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+
+    <!-- HEADER -->
+    <header class="mb-8">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-3 mb-1">
+            <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">FactorAtlas</h1>
+            <span id="live-badge" class="hidden items-center gap-1.5 bg-emerald-500/10 text-emerald-400 text-[10px] uppercase tracking-widest font-semibold px-2.5 py-1 rounded-full">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 live-dot inline-block"></span>
+              Live
+            </span>
+          </div>
+          <p class="text-sm text-gray-500">Autonomous Factor Discovery Agent</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-[10px] uppercase tracking-widest font-semibold text-accent-gold/80 bg-accent-gold/10 px-3 py-1.5 rounded-md">Track 2: Agentic Trading</span>
+          <span class="text-[10px] uppercase tracking-widest font-semibold text-blue-400/80 bg-blue-400/10 px-3 py-1.5 rounded-md">Bitget AI Genesis S2</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- STATS STRIP -->
+    <section class="mb-8">
+      <div class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold mb-3">Performance Overview</div>
+      <div id="stats-strip" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+
+    <!-- PIPELINE -->
+    <section class="mb-8">
+      <div class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold mb-3">Autonomous Agent Pipeline — no human in the loop</div>
+      <div class="bg-surface-raised border border-border rounded-lg p-4 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+        <span class="pipeline-step bg-blue-500/10 text-blue-400 text-[11px] font-semibold px-3 py-1.5 rounded-md">OBSERVE</span>
+        <span class="text-gray-600 text-xs">→</span>
+        <span class="pipeline-step bg-violet-500/10 text-violet-400 text-[11px] font-semibold px-3 py-1.5 rounded-md">PROPOSE</span>
+        <span class="text-gray-600 text-xs">→</span>
+        <span class="pipeline-step bg-cyan-500/10 text-cyan-400 text-[11px] font-semibold px-3 py-1.5 rounded-md">VALIDATE</span>
+        <span class="text-gray-600 text-xs">→</span>
+        <span class="pipeline-step bg-purple-500/10 text-purple-400 text-[11px] font-semibold px-3 py-1.5 rounded-md">DECIDE</span>
+        <span class="text-gray-600 text-xs">→</span>
+        <span class="pipeline-step bg-red-500/10 text-red-400 text-[11px] font-semibold px-3 py-1.5 rounded-md">GATE</span>
+        <span class="text-gray-600 text-xs">→</span>
+        <span class="pipeline-step bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold px-3 py-1.5 rounded-md">EXECUTE</span>
+        <span class="text-gray-600 text-xs">→</span>
+        <span class="pipeline-step bg-amber-500/10 text-amber-400 text-[11px] font-semibold px-3 py-1.5 rounded-md">VERIFY</span>
+      </div>
+    </section>
+
+    <!-- TABS -->
+    <nav class="flex gap-1 border-b border-border mb-6 overflow-x-auto" id="tab-nav">
+      <button onclick="switchTab('timeline')" data-tab="timeline" class="tab-active px-4 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors">Agent Timeline</button>
+      <button onclick="switchTab('factors')" data-tab="factors" class="tab-inactive px-4 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors">Factor Discovery</button>
+      <button onclick="switchTab('decisions')" data-tab="decisions" class="tab-inactive px-4 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors">Decisions</button>
+      <button onclick="switchTab('risk')" data-tab="risk" class="tab-inactive px-4 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors">Risk Control</button>
+      <button onclick="switchTab('trades')" data-tab="trades" class="tab-inactive px-4 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors">Trade History</button>
+    </nav>
+
+    <!-- TAB PANELS -->
+    <div id="panel-timeline" class="tab-panel"></div>
+    <div id="panel-factors" class="tab-panel hidden"></div>
+    <div id="panel-decisions" class="tab-panel hidden"></div>
+    <div id="panel-risk" class="tab-panel hidden"></div>
+    <div id="panel-trades" class="tab-panel hidden"></div>
+
+    <!-- EMPTY STATE -->
+    <div id="empty-state" class="hidden text-center py-20">
+      <div class="text-4xl mb-4 opacity-30">◇</div>
+      <p class="text-gray-500 text-sm">Awaiting first autonomous run</p>
+      <p class="text-gray-600 text-xs mt-2">The agent runs every 4 hours via GitHub Actions.<br>Data will appear here automatically.</p>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="mt-12 pt-6 border-t border-border text-[11px] text-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <a href="https://github.com/samueldanso/factor-atlas" class="text-gray-500 hover:text-gray-300 transition-colors">GitHub</a>
+        <span class="text-gray-700">·</span>
+        <a href="logs/events.jsonl" class="text-gray-500 hover:text-gray-300 transition-colors">Raw Events</a>
+        <span class="text-gray-700">·</span>
+        <a href="logs/decisions.jsonl" class="text-gray-500 hover:text-gray-300 transition-colors">Raw Decisions</a>
+        <span class="text-gray-700">·</span>
+        <a href="logs/trades.jsonl" class="text-gray-500 hover:text-gray-300 transition-colors">Raw Trades</a>
+        <span class="text-gray-700">·</span>
+        <a href="logs/risk.jsonl" class="text-gray-500 hover:text-gray-300 transition-colors">Raw Risk</a>
+      </div>
+      <div class="text-gray-600">
+        Built for <span class="text-accent-gold/60">Bitget AI Genesis S2</span> · LLM: Qwen 3.8 Max
+      </div>
+    </footer>
+  </div>
+
+<script>
+// ─── Data loading ───────────────────────────────────────────
+const DATA = { agentLog: [], events: [], decisions: [], risk: [], trades: [] };
+
+function parseJSONL(text) {
+  return text.trim().split('\n').map(line => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(r => r && !r.status);
+}
+
+async function fetchText(url) {
+  try { const r = await fetch(url); if (!r.ok) return ''; return await r.text(); }
+  catch { return ''; }
+}
+
+async function loadData() {
+  const [agentRaw, eventsRaw, decisionsRaw, riskRaw, tradesRaw] = await Promise.all([
+    fetchText('logs/agent.log'),
+    fetchText('logs/events.jsonl'),
+    fetchText('logs/decisions.jsonl'),
+    fetchText('logs/risk.jsonl'),
+    fetchText('logs/trades.jsonl'),
+  ]);
+
+  DATA.agentLog = agentRaw.trim().split('\n').filter(l => l && !l.startsWith('[Awaiting'));
+  DATA.events = parseJSONL(eventsRaw);
+  DATA.decisions = parseJSONL(decisionsRaw);
+  DATA.risk = parseJSONL(riskRaw);
+  DATA.trades = parseJSONL(tradesRaw);
+
+  const hasData = DATA.events.length > 0 || DATA.trades.length > 0 || DATA.agentLog.length > 0;
+
+  if (hasData) {
+    document.getElementById('live-badge').classList.remove('hidden');
+    document.getElementById('live-badge').classList.add('inline-flex');
+    document.getElementById('empty-state').classList.add('hidden');
+  } else {
+    document.getElementById('empty-state').classList.remove('hidden');
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  }
+
+  renderStats();
+  renderTimeline();
+  renderFactors();
+  renderDecisions();
+  renderRisk();
+  renderTrades();
+}
+
+// ─── Helpers ────────────────────────────────────────────────
+function uniqueValues(arr, key) { return [...new Set(arr.map(r => r[key]).filter(Boolean))]; }
+function formatTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+function shortId(id) { return id ? id.slice(0, 8) : '—'; }
+function pct(v) { return v != null ? (v * 100).toFixed(2) + '%' : '—'; }
+function usd(v) { return v != null ? '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; }
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ─── Stats ──────────────────────────────────────────────────
+function renderStats() {
+  const runs = uniqueValues(DATA.events, 'run_id');
+  const cycles = DATA.events.length;
+  const entries = DATA.trades.filter(t => t.record_type === 'entry');
+  const exits = DATA.trades.filter(t => t.record_type === 'exit');
+  const closedWithPnl = exits.filter(t => t.pnl != null);
+  const wins = closedWithPnl.filter(t => Number(t.pnl) > 0).length;
+  const winRate = closedWithPnl.length > 0 ? ((wins / closedWithPnl.length) * 100).toFixed(0) : '—';
+
+  // Count blocked vs passed from risk
+  const blocked = DATA.risk.filter(r => r.verdict === 'blocked').length;
+  const gated = DATA.risk.length;
+
+  // Open positions: entries without matching exits
+  const exitInstruments = new Set(exits.map(t => t.instrument));
+  const openPositions = entries.filter(t => !exitInstruments.has(t.instrument)).length;
+
+  // Total PnL
+  const totalPnl = closedWithPnl.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+
+  const stats = [
+    { label: 'Total Runs', value: runs.length || '0', color: 'text-white' },
+    { label: 'Cycles', value: cycles || '0', color: 'text-white' },
+    { label: 'Accepted', value: entries.length || '0', sub: `${blocked} blocked`, color: 'text-emerald-400' },
+    { label: 'Win Rate', value: winRate === '—' ? '—' : winRate + '%', color: closedWithPnl.length === 0 ? 'text-gray-500' : 'text-emerald-400' },
+    { label: 'Open Positions', value: openPositions, color: openPositions > 0 ? 'text-amber-400' : 'text-gray-500' },
+    { label: 'Total PnL', value: closedWithPnl.length > 0 ? usd(totalPnl) : '—', color: totalPnl > 0 ? 'text-emerald-400' : totalPnl < 0 ? 'text-red-400' : 'text-gray-500' },
+    { label: 'Schedule', value: 'Every 4h', sub: 'GitHub Actions', color: 'text-gray-400' },
+  ];
+
+  const container = document.getElementById('stats-strip');
+  container.innerHTML = stats.map(s => `
+    <div class="bg-surface-raised border border-border rounded-lg px-4 py-3">
+      <div class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold mb-1">${s.label}</div>
+      <div class="text-lg font-bold ${s.color} tracking-tight">${s.value}</div>
+      ${s.sub ? `<div class="text-[10px] text-gray-600 mt-0.5">${s.sub}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ─── Tabs ───────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.className = btn.dataset.tab === name
+      ? 'tab-active px-4 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors'
+      : 'tab-inactive px-4 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap transition-colors';
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  const panel = document.getElementById('panel-' + name);
+  if (panel) { panel.classList.remove('hidden'); panel.classList.add('animate-in'); }
+}
+
+// ─── Timeline ───────────────────────────────────────────────
+function renderTimeline() {
+  const panel = document.getElementById('panel-timeline');
+  if (DATA.agentLog.length === 0) {
+    panel.innerHTML = emptyPanel('No agent activity yet');
+    return;
+  }
+
+  const lines = [...DATA.agentLog].reverse();
+  panel.innerHTML = `
+    <div class="bg-surface-raised border border-border rounded-lg overflow-hidden">
+      <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+        <span class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold">Agent Log</span>
+        <span class="text-[10px] text-gray-600">${DATA.agentLog.length} entries</span>
+      </div>
+      <div class="max-h-[600px] overflow-y-auto p-0">
+        ${lines.map((line, i) => {
+          const lineNum = lines.length - i;
+          const isRun = line.includes('=== Run');
+          const isBlocked = line.includes('BLOCKED');
+          const isEntry = line.includes('Entry:') || line.includes('Exit:');
+          const lineColor = isRun ? 'text-accent-gold/80' : isBlocked ? 'text-red-400/80' : isEntry ? 'text-emerald-400/80' : 'text-gray-400';
+          const bg = isRun ? 'bg-accent-gold/[0.03]' : '';
+          return `<div class="flex ${bg} hover:bg-white/[0.02] transition-colors">
+            <span class="text-[11px] text-gray-700 w-8 sm:w-10 text-right flex-shrink-0 py-1 pr-2 select-none">${lineNum}</span>
+            <span class="text-[11px] ${lineColor} py-1 pr-4 break-all">${escapeHtml(line)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ─── Factor Discovery ───────────────────────────────────────
+function renderFactors() {
+  const panel = document.getElementById('panel-factors');
+  if (DATA.events.length === 0) {
+    panel.innerHTML = emptyPanel('No factor discovery events yet');
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold mb-3">Factor Hypotheses & Validation</div>
+    <div class="space-y-3">
+      ${DATA.events.map((ev, idx) => {
+        const h = ev.hypothesis || {};
+        const v = ev.validation || {};
+        const passed = v.passed;
+        return `
+        <div class="bg-surface-raised border border-border rounded-lg overflow-hidden">
+          <div class="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <span class="text-xs font-bold text-white">${ev.instrument || '—'}</span>
+              <span class="text-[10px] text-gray-500">@</span>
+              <span class="text-xs text-gray-400">${usd(ev.price)}</span>
+              <span class="text-[10px] px-2 py-0.5 rounded font-semibold ${h.direction === 'long' ? 'bg-emerald-500/10 text-emerald-400' : h.direction === 'short' ? 'bg-red-500/10 text-red-400' : 'bg-gray-500/10 text-gray-400'}">${(h.direction || '—').toUpperCase()}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-[10px] px-2 py-0.5 rounded font-semibold ${passed ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}">${passed ? 'PASSED' : 'FAILED'}</span>
+              <span class="text-[10px] text-gray-600">${formatTime(ev.timestamp)}</span>
+            </div>
+          </div>
+
+          <div class="px-4 py-3 border-t border-border/50 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-[9px] uppercase tracking-[0.15em] text-gray-600 font-semibold mb-1.5">Hypothesis</div>
+              <div class="text-xs text-gray-400 mb-1">
+                <span class="text-violet-400 font-semibold">${h.factor_name || '—'}</span>
+                ${h.parameters ? `<span class="text-gray-600 ml-1">(lookback: ${h.parameters.lookback || '—'})</span>` : ''}
+              </div>
+              <div class="expand-toggle text-[11px] text-gray-500 leading-relaxed" onclick="toggleExpand(this)">
+                <span class="truncate-text">${escapeHtml((h.rationale || '').slice(0, 100))}${(h.rationale || '').length > 100 ? '…' : ''}</span>
+                ${(h.rationale || '').length > 100 ? '<span class="text-accent-gold/60 ml-1 text-[10px]">expand</span>' : ''}
+                <div class="expand-content text-gray-400 mt-1">${escapeHtml(h.rationale || '')}</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-[9px] uppercase tracking-[0.15em] text-gray-600 font-semibold mb-1.5">Validation</div>
+              <div class="grid grid-cols-3 gap-2">
+                <div>
+                  <div class="text-[9px] text-gray-600">Sharpe</div>
+                  <div class="text-xs font-bold ${(v.sharpe || 0) >= 2 ? 'text-emerald-400' : 'text-gray-400'}">${v.sharpe != null ? v.sharpe.toFixed(2) : '—'}</div>
+                </div>
+                <div>
+                  <div class="text-[9px] text-gray-600">Max DD</div>
+                  <div class="text-xs font-bold ${(v.max_drawdown || 0) > -0.05 ? 'text-emerald-400' : 'text-red-400'}">${pct(v.max_drawdown)}</div>
+                </div>
+                <div>
+                  <div class="text-[9px] text-gray-600">Obs</div>
+                  <div class="text-xs font-bold text-gray-400">${v.observations || '—'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 py-1.5 border-t border-border/30 text-[10px] text-gray-700">
+            cycle <span class="text-gray-500">${shortId(ev.cycle_id)}</span> · run <span class="text-gray-500">${shortId(ev.run_id)}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ─── Decisions ──────────────────────────────────────────────
+function renderDecisions() {
+  const panel = document.getElementById('panel-decisions');
+  if (DATA.decisions.length === 0) {
+    panel.innerHTML = emptyPanel('No decisions recorded yet');
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold mb-3">LLM Decision Explainability</div>
+    <div class="space-y-3">
+      ${DATA.decisions.map(d => {
+        const isBuy = (d.side || '').toLowerCase() === 'buy';
+        return `
+        <div class="bg-surface-raised border border-border rounded-lg p-4">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-white">${d.instrument || '—'}</span>
+              <span class="text-[11px] px-2 py-0.5 rounded font-bold ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}">${(d.side || '—').toUpperCase()}</span>
+              <span class="text-xs text-gray-400">qty ${d.quantity || '—'}</span>
+              <span class="text-xs text-gray-500">@</span>
+              <span class="text-xs text-gray-400">${usd(d.price)}</span>
+            </div>
+            <span class="text-[10px] text-gray-600 sm:ml-auto">${formatTime(d.timestamp)}</span>
+          </div>
+          <div class="text-[9px] uppercase tracking-[0.15em] text-gray-600 font-semibold mb-1">LLM Rationale</div>
+          <p class="text-[11px] text-gray-400 leading-relaxed">${escapeHtml(d.rationale || 'No rationale provided')}</p>
+          <div class="mt-3 pt-2 border-t border-border/30 text-[10px] text-gray-700">
+            hypothesis <span class="text-gray-500">${shortId(d.selected_hypothesis)}</span> ·
+            cycle <span class="text-gray-500">${shortId(d.cycle_id)}</span> ·
+            run <span class="text-gray-500">${shortId(d.run_id)}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ─── Risk Control ───────────────────────────────────────────
+function renderRisk() {
+  const panel = document.getElementById('panel-risk');
+  if (DATA.risk.length === 0) {
+    panel.innerHTML = emptyPanel('No risk assessments yet');
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold mb-3">14-Gate Risk Control Layer</div>
+    <div class="space-y-3">
+      ${DATA.risk.map(r => {
+        const gates = r.gates || [];
+        const passed = gates.filter(g => g.passed).length;
+        const total = gates.length;
+        const allPassed = r.verdict === 'all_passed';
+        const blockedGate = gates.find(g => !g.passed);
+        const pctPassed = total > 0 ? (passed / total * 100) : 0;
+
+        return `
+        <div class="bg-surface-raised border border-border rounded-lg overflow-hidden">
+          <div class="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div class="flex items-center gap-3 flex-1">
+              <span class="text-xs font-bold text-white">${r.instrument || '—'}</span>
+              <span class="text-[11px] px-2 py-0.5 rounded font-bold ${allPassed ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}">
+                ${allPassed ? `${passed}/${total} PASSED` : `BLOCKED`}
+              </span>
+              ${blockedGate ? `<span class="text-[10px] text-red-400/70">by ${blockedGate.gate_name}</span>` : ''}
+            </div>
+            <span class="text-[10px] text-gray-600">${formatTime(r.timestamp)}</span>
+          </div>
+
+          <!-- Gate bar -->
+          <div class="px-4 pb-2">
+            <div class="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div class="gate-bar h-full rounded-full ${allPassed ? 'bg-emerald-500/60' : 'bg-red-500/60'}" style="width:${pctPassed}%"></div>
+            </div>
+          </div>
+
+          <!-- Expandable gates -->
+          <div class="px-4 pb-1">
+            <div class="expand-toggle text-[10px] text-gray-600 hover:text-gray-400 transition-colors py-1" onclick="toggleExpand(this)">
+              <span>▸ Show all ${total} gates</span>
+              <div class="expand-content">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 pt-2 pb-2">
+                  ${gates.map(g => `
+                    <div class="flex items-center gap-2 py-0.5">
+                      <span class="w-3 h-3 flex items-center justify-center text-[10px] ${g.passed ? 'text-emerald-400' : 'text-red-400'}">${g.passed ? '✓' : '✗'}</span>
+                      <span class="text-[10px] ${g.passed ? 'text-gray-500' : 'text-red-400 font-semibold'}">${g.gate_name}</span>
+                      <span class="text-[9px] text-gray-700 ml-auto max-w-[200px] truncate">${escapeHtml(g.reason || '')}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 py-1.5 border-t border-border/30 text-[10px] text-gray-700">
+            cycle <span class="text-gray-500">${shortId(r.cycle_id)}</span> · run <span class="text-gray-500">${shortId(r.run_id)}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ─── Trade History ──────────────────────────────────────────
+function renderTrades() {
+  const panel = document.getElementById('panel-trades');
+  if (DATA.trades.length === 0) {
+    panel.innerHTML = emptyPanel('No trade executions yet');
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="text-[9px] uppercase tracking-[0.2em] text-gray-600 font-semibold mb-3">Bitget Demo Paper Trading — Verifiable Execution</div>
+    <div class="bg-surface-raised border border-border rounded-lg overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-[11px]">
+          <thead>
+            <tr class="border-b border-border text-[9px] uppercase tracking-[0.15em] text-gray-600">
+              <th class="text-left px-4 py-2.5 font-semibold">Time</th>
+              <th class="text-left px-4 py-2.5 font-semibold">Type</th>
+              <th class="text-left px-4 py-2.5 font-semibold">Instrument</th>
+              <th class="text-left px-4 py-2.5 font-semibold">Side</th>
+              <th class="text-right px-4 py-2.5 font-semibold">Price</th>
+              <th class="text-right px-4 py-2.5 font-semibold">Size</th>
+              <th class="text-left px-4 py-2.5 font-semibold">Order ID</th>
+              <th class="text-left px-4 py-2.5 font-semibold">Status</th>
+              <th class="text-right px-4 py-2.5 font-semibold">PnL</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${DATA.trades.map(t => {
+              const isBuy = (t.side || '').toLowerCase() === 'buy';
+              const isEntry = t.record_type === 'entry';
+              const hasPnl = t.pnl != null;
+              const pnlVal = hasPnl ? Number(t.pnl) : null;
+              return `
+              <tr class="border-b border-border/30 hover:bg-white/[0.02] transition-colors">
+                <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">${formatTime(t.timestamp)}</td>
+                <td class="px-4 py-2.5">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded ${isEntry ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'} font-semibold">${(t.record_type || '—').toUpperCase()}</span>
+                </td>
+                <td class="px-4 py-2.5 text-white font-semibold">${t.instrument || '—'}</td>
+                <td class="px-4 py-2.5">
+                  <span class="font-bold ${isBuy ? 'text-emerald-400' : 'text-red-400'}">${(t.side || '—').toUpperCase()}</span>
+                </td>
+                <td class="px-4 py-2.5 text-right text-gray-300">${usd(t.price)}</td>
+                <td class="px-4 py-2.5 text-right text-gray-400">${t.size || '—'}</td>
+                <td class="px-4 py-2.5 text-gray-500 font-mono text-[10px]" title="${t.orderId || ''}">${t.orderId ? t.orderId.slice(0, 12) + '…' : '—'}</td>
+                <td class="px-4 py-2.5">
+                  <span class="text-[10px] ${t.orderStatus === 'filled' ? 'text-emerald-400' : 'text-amber-400'}">${(t.orderStatus || '—').toUpperCase()}</span>
+                </td>
+                <td class="px-4 py-2.5 text-right font-bold ${pnlVal > 0 ? 'text-emerald-400' : pnlVal < 0 ? 'text-red-400' : 'text-gray-600'}">
+                  ${hasPnl ? usd(pnlVal) : '—'}
+                  ${t.pnl_pct != null ? `<span class="text-[9px] ml-1 text-gray-600">(${pct(t.pnl_pct)})</span>` : ''}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="px-4 py-2 border-t border-border/30 text-[10px] text-gray-700">
+        All orders executed on Bitget Demo (paper trading) via USDT-M futures. Order IDs are verifiable on Bitget.
+      </div>
+    </div>
+  `;
+}
+
+// ─── Utilities ──────────────────────────────────────────────
+function emptyPanel(msg) {
+  return `
+    <div class="text-center py-16">
+      <div class="text-2xl mb-3 opacity-20">◇</div>
+      <p class="text-gray-600 text-xs">${msg}</p>
+      <p class="text-gray-700 text-[10px] mt-1">Data populates when the autonomous agent runs.</p>
+    </div>
+  `;
+}
+
+function toggleExpand(el) {
+  const content = el.querySelector('.expand-content');
+  if (content) {
+    content.classList.toggle('open');
+    const arrow = el.querySelector('span');
+    if (arrow && arrow.textContent.startsWith('▸')) {
+      arrow.textContent = arrow.textContent.replace('▸', '▾');
+    } else if (arrow && arrow.textContent.startsWith('▾')) {
+      arrow.textContent = arrow.textContent.replace('▾', '▸');
+    }
+  }
+}
+
+// ─── Init ───────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>
