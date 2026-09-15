@@ -4,7 +4,7 @@
       "instrument": "RAAPLUSDT",
       "side": "buy",
       "entry_price": "330.6",
-      "quantity": "25",
+      "quantity": "15",
       "entry_time": "2026-09-15T04:51:22.704444+00:00",
       "hypothesis_id": "f236355e-50c8-4922-b41a-a6d74a85e1b1",
       "factor_name": "mean_reversion",
@@ -14,7 +14,7 @@
       "instrument": "RMETAUSDT",
       "side": "sell",
       "entry_price": "662.22",
-      "quantity": "9",
+      "quantity": "7",
       "entry_time": "2026-09-15T04:52:24.425027+00:00",
       "hypothesis_id": "f03e9172-905f-40e5-81c5-aa984328d5e2",
       "factor_name": "mean_reversion",
@@ -24,7 +24,7 @@
       "instrument": "RNVDAUSDT",
       "side": "buy",
       "entry_price": "212.28",
-      "quantity": "35",
+      "quantity": "1",
       "entry_time": "2026-09-15T04:53:00.901371+00:00",
       "hypothesis_id": "57de7928-3713-4ae1-b644-49d55dfea3c6",
       "factor_name": "mean_reversion",
@@ -32,5 +32,5 @@
     }
   ],
   "closed_trades": [],
-  "last_updated": "2026-09-15T04:53:50.914117+00:00"
+  "last_updated": "2026-09-15T13:10:46.783066+00:00"
 }

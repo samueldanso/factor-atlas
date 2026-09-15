@@ -18,3 +18,19 @@
 [2026-09-15 04:53:49] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
 [2026-09-15 04:53:50] ✅ Entry: buy NVDAUSDT @ $212.28 size=35 orderId=1483618059736694784 status=filled
 [2026-09-15 04:53:50] === Run d8c8fe97 complete | 4 cycles | 3 accepted, 1 skipped ===
+[2026-09-15 13:07:58] === Run e67cfd25 started | Mode: demo | Interval: 0s | LLM: qwen3.8-max ===
+[2026-09-15 13:10:46] 🧠 RAAPLUSDT Hypothesis: mean_reversion → long | "RAAPLUSDT closed near the intraday low after pulling back from the open, suggest"
+[2026-09-15 13:10:46] 📊 Validation: Sharpe=2.47, MaxDD=-0.63%, 28 obs → PASSED
+[2026-09-15 13:10:46] 🤖 Decision: buy AAPLUSDT @ $331.2114 qty=25 | "Candidate 0 has the highest Sharpe ratio (2.4654) and the lowest maximum drawdow"
+[2026-09-15 13:10:46] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 13:10:46] 🧠 RMETAUSDT Hypothesis: momentum → long | "RMETAUSDT closed above its open, suggesting possible continuation of short-term "
+[2026-09-15 13:10:46] 📊 Validation: Sharpe=1.12, MaxDD=-3.79%, 28 obs → PASSED
+[2026-09-15 13:10:46] 🤖 Decision: buy METAUSDT @ $663.44 qty=9 | "Only validated candidate; momentum long with positive Sharpe and acceptable max "
+[2026-09-15 13:10:46] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 13:10:46] 🔍 RNVDAUSDT close=$212.6285 — no hypothesis proposed
+[2026-09-15 13:10:46] ⏭️ No trade for NVDAUSDT — no_candidate
+[2026-09-15 13:10:46] 🧠 RTSLAUSDT Hypothesis: mean_reversion → long | "The latest close near the intraday low suggests short-term oversold conditions t"
+[2026-09-15 13:10:46] 📊 Validation: Sharpe=2.97, MaxDD=-0.45%, 28 obs → PASSED
+[2026-09-15 13:10:46] 🤖 Decision: buy TSLAUSDT @ $359.0229 qty=16 | "Only validated candidate passed validation and offers a long mean-reversion setu"
+[2026-09-15 13:10:46] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 13:10:46] === Run e67cfd25 complete | 4 cycles | 0 accepted, 4 skipped ===
