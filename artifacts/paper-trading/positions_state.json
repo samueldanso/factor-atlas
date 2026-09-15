@@ -1,134 +1,36 @@
 {
-  "reconciled_from": "bgc --paper-trading position --action info --category USDT-FUTURES",
-  "reconciled_at": "2026-09-14T13:26:21Z",
   "open_positions": [
-    {
-      "symbol": "AAPLUSDT",
-      "productType": "USDT-FUTURES",
-      "holdSide": "short",
-      "size": "15",
-      "avgPrice": "331.713333",
-      "leverage": "20",
-      "marginMode": "crossed",
-      "unrealisedPnl": "-34.9",
-      "markPrice": "334.04",
-      "createdTime": "1789281109130"
-    },
-    {
-      "symbol": "METAUSDT",
-      "productType": "USDT-FUTURES",
-      "holdSide": "short",
-      "size": "7",
-      "avgPrice": "640.898571",
-      "leverage": "20",
-      "marginMode": "crossed",
-      "unrealisedPnl": "-116.7",
-      "markPrice": "657.57",
-      "createdTime": "1789291693212"
-    },
-    {
-      "symbol": "METAUSDT",
-      "productType": "USDT-FUTURES",
-      "holdSide": "long",
-      "size": "7",
-      "avgPrice": "640.14",
-      "leverage": "20",
-      "marginMode": "crossed",
-      "unrealisedPnl": "122.01",
-      "markPrice": "657.57",
-      "createdTime": "1789378158358"
-    },
-    {
-      "symbol": "NVDAUSDT",
-      "productType": "USDT-FUTURES",
-      "holdSide": "short",
-      "size": "1",
-      "avgPrice": "213.1",
-      "leverage": "20",
-      "marginMode": "crossed",
-      "unrealisedPnl": "-1.04",
-      "markPrice": "214.14",
-      "createdTime": "1789378159198"
-    },
-    {
-      "symbol": "NVDAUSDT",
-      "productType": "USDT-FUTURES",
-      "holdSide": "long",
-      "size": "1",
-      "avgPrice": "218.07",
-      "leverage": "20",
-      "marginMode": "crossed",
-      "unrealisedPnl": "-3.93",
-      "markPrice": "214.14",
-      "createdTime": "1789298698349"
-    },
-    {
-      "symbol": "TSLAUSDT",
-      "productType": "USDT-FUTURES",
-      "holdSide": "short",
-      "size": "1",
-      "avgPrice": "358.7294",
-      "leverage": "20",
-      "marginMode": "crossed",
-      "unrealisedPnl": "0.4694",
-      "markPrice": "358.26",
-      "createdTime": "1789376793869"
-    },
-    {
-      "symbol": "TSLAUSDT",
-      "productType": "USDT-FUTURES",
-      "holdSide": "long",
-      "size": "1",
-      "avgPrice": "358.18",
-      "leverage": "20",
-      "marginMode": "crossed",
-      "unrealisedPnl": "0.08",
-      "markPrice": "358.26",
-      "createdTime": "1789377753750"
-    }
-  ],
-  "closed_trades": [
     {
       "instrument": "RAAPLUSDT",
       "side": "buy",
-      "entry_price": "330.77",
-      "exit_price": "330.95",
-      "quantity": "7",
-      "pnl": "1.26",
-      "pnl_pct": 0.0005441847809656257,
-      "entry_time": "2026-09-13T08:28:54.470920+00:00",
-      "exit_time": "2026-09-14T09:29:15.974259+00:00",
-      "hold_duration_hours": 25.005973149722223,
-      "won": true,
-      "factor_name": "mean_reversion"
+      "entry_price": "330.6",
+      "quantity": "25",
+      "entry_time": "2026-09-15T04:51:22.704444+00:00",
+      "hypothesis_id": "f236355e-50c8-4922-b41a-a6d74a85e1b1",
+      "factor_name": "mean_reversion",
+      "cycle_id": "f4031403-cfbe-5999-9cf1-ed67291ff804"
     },
     {
       "instrument": "RMETAUSDT",
       "side": "sell",
-      "entry_price": "638.96",
-      "exit_price": "640.24",
-      "quantity": "7",
-      "pnl": "-8.96",
-      "pnl_pct": -0.002003255289846,
-      "entry_time": "2026-09-13T08:28:54.470920+00:00",
-      "exit_time": "2026-09-14T09:29:15.974259+00:00",
-      "hold_duration_hours": 25.005973149722223,
-      "won": false,
-      "factor_name": "mean_reversion"
+      "entry_price": "662.22",
+      "quantity": "9",
+      "entry_time": "2026-09-15T04:52:24.425027+00:00",
+      "hypothesis_id": "f03e9172-905f-40e5-81c5-aa984328d5e2",
+      "factor_name": "mean_reversion",
+      "cycle_id": "c332d532-0eeb-5e2f-a824-510c605fb6c7"
     },
     {
       "instrument": "RNVDAUSDT",
       "side": "buy",
-      "entry_price": "211.0587",
-      "exit_price": "211.64",
-      "quantity": "1",
-      "pnl": "0.5813",
-      "pnl_pct": 0.0027542100846826025,
-      "entry_time": "2026-09-13T08:28:54.470920+00:00",
-      "exit_time": "2026-09-14T09:29:15.974259+00:00",
-      "hold_duration_hours": 25.005973149722223,
-      "won": true,
-      "factor_name": "mean_reversion"
+      "entry_price": "212.28",
+      "quantity": "35",
+      "entry_time": "2026-09-15T04:53:00.901371+00:00",
+      "hypothesis_id": "57de7928-3713-4ae1-b644-49d55dfea3c6",
+      "factor_name": "mean_reversion",
+      "cycle_id": "e1588668-1cfc-5295-968f-f0613cf89eeb"
     }
-  ]
+  ],
+  "closed_trades": [],
+  "last_updated": "2026-09-15T04:53:50.914117+00:00"
 }

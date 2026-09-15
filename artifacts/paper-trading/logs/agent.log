@@ -1,1 +1,20 @@
 [Awaiting first autonomous run — agent starts every 4h via GitHub Actions]
+[2026-09-15 04:50:28] === Run d8c8fe97 started | Mode: demo | Interval: 0s | LLM: qwen3.8-max ===
+[2026-09-15 04:53:49] 🧠 RAAPLUSDT Hypothesis: mean_reversion → long | "The close at 330.6 is near the low of 330.5 and below the open at 335.06, sugges"
+[2026-09-15 04:53:49] 📊 Validation: Sharpe=2.47, MaxDD=-0.63%, 28 obs → PASSED
+[2026-09-15 04:53:49] 🤖 Decision: buy AAPLUSDT @ $330.6 qty=25 | "Candidate 0 has the highest Sharpe ratio and the lowest maximum drawdown among v"
+[2026-09-15 04:53:49] 🛡️ Gates: 14/14 passed
+[2026-09-15 04:53:49] 🧠 RMETAUSDT Hypothesis: momentum → long | "A positive close near the upper part of the intraday range may indicate developi"
+[2026-09-15 04:53:49] 📊 Validation: Sharpe=2.50, MaxDD=-2.45%, 28 obs → PASSED
+[2026-09-15 04:53:49] 🤖 Decision: sell METAUSDT @ $662.22 qty=9 | "Candidate 1 has a substantially higher Sharpe ratio (3.9221 vs 2.5026) and a muc"
+[2026-09-15 04:53:49] 🛡️ Gates: 14/14 passed
+[2026-09-15 04:53:49] 🧠 RNVDAUSDT Hypothesis: mean_reversion → long | "If RNVDAUSDT pulls back from the 212 zone, a short-term oversold condition may o"
+[2026-09-15 04:53:49] 📊 Validation: Sharpe=2.95, MaxDD=-0.01%, 28 obs → PASSED
+[2026-09-15 04:53:49] 🤖 Decision: buy NVDAUSDT @ $212.28 qty=35 | "Only validated candidate passed validation with strong Sharpe (2.9502) and negli"
+[2026-09-15 04:53:49] 🛡️ Gates: 14/14 passed
+[2026-09-15 04:53:49] 🧠 RTSLAUSDT Hypothesis: mean_reversion → long | "The close near the low of the session may reflect short-term exhaustion, creatin"
+[2026-09-15 04:53:49] 📊 Validation: Sharpe=2.97, MaxDD=-0.45%, 28 obs → PASSED
+[2026-09-15 04:53:49] 🤖 Decision: buy TSLAUSDT @ $359.44 qty=17 | "Only validated candidate; mean-reversion long passed validation with strong Shar"
+[2026-09-15 04:53:49] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 04:53:50] ✅ Entry: buy NVDAUSDT @ $212.28 size=35 orderId=1483618059736694784 status=filled
+[2026-09-15 04:53:50] === Run d8c8fe97 complete | 4 cycles | 3 accepted, 1 skipped ===
