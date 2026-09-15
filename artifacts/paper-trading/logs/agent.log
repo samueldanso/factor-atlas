@@ -50,3 +50,21 @@
 [2026-09-15 19:33:39] 🔍 RTSLAUSDT close=$355.905 — no hypothesis proposed
 [2026-09-15 19:33:39] ⏭️ No trade for TSLAUSDT — no_candidate
 [2026-09-15 19:33:39] === Run 91382df7 complete | 4 cycles | 0 accepted, 4 skipped ===
+[2026-09-15 22:42:43] === Run 8e3e960c started | Mode: demo | Interval: 0s | LLM: qwen3.8-max ===
+[2026-09-15 22:45:06] 🧠 RAAPLUSDT Hypothesis: ema_crossover → long | "A bullish EMA crossover may confirm that the strong close is developing into a s"
+[2026-09-15 22:45:06] 📊 Validation: Sharpe=2.16, MaxDD=-5.04%, 28 obs → PASSED
+[2026-09-15 22:45:06] 🤖 Decision: sell AAPLUSDT @ $331.8 qty=26 | "Highest Sharpe ratio (2.8036) and lowest maximum drawdown (-0.0063) among valida"
+[2026-09-15 22:45:06] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 22:45:06] 🧠 RMETAUSDT Hypothesis: momentum → long | "If RMETAUSDT maintains positive short-term momentum after the latest session, co"
+[2026-09-15 22:45:06] 📊 Validation: Sharpe=4.22, MaxDD=-1.41%, 28 obs → PASSED
+[2026-09-15 22:45:06] 🤖 Decision: buy METAUSDT @ $668.5001 qty=9 | "Only validated candidate passed, with strong sharpe and low max drawdown."
+[2026-09-15 22:45:06] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 22:45:06] 🧠 RNVDAUSDT Hypothesis: mean_reversion → long | "RNVDAUSDT may experience short-term oversold conditions that revert toward the r"
+[2026-09-15 22:45:06] 📊 Validation: Sharpe=2.95, MaxDD=-0.01%, 28 obs → PASSED
+[2026-09-15 22:45:06] 🤖 Decision: buy NVDAUSDT @ $212.6085 qty=37 | "Only validated candidate available; it passed validation with a strong Sharpe ra"
+[2026-09-15 22:45:06] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 22:45:06] 🧠 RTSLAUSDT Hypothesis: mean_reversion → long | "The close near the intraday low suggests a possible short-term oversold conditio"
+[2026-09-15 22:45:06] 📊 Validation: Sharpe=2.97, MaxDD=-0.45%, 28 obs → PASSED
+[2026-09-15 22:45:06] 🤖 Decision: buy TSLAUSDT @ $356.2626 qty=16 | "Only validated candidate; passed validation with strong Sharpe and very low draw"
+[2026-09-15 22:45:06] 🚫 Gates: BLOCKED by max_position — positions 3 >= 3
+[2026-09-15 22:45:06] === Run 8e3e960c complete | 4 cycles | 0 accepted, 4 skipped ===

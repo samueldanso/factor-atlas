@@ -1,0 +1,41 @@
+{
+  "run_id": "8e3e960c-2486-43a6-b52a-5b809f1ddf2a",
+  "start_timestamp": "2026-09-15T22:42:41.761875+00:00",
+  "end_timestamp": "2026-09-15T22:45:06.743074+00:00",
+  "timezone": "UTC",
+  "mode": "demo",
+  "instruments": [
+    "RAAPLUSDT",
+    "RMETAUSDT",
+    "RNVDAUSDT",
+    "RTSLAUSDT"
+  ],
+  "execution_instruments": [
+    "AAPLUSDT",
+    "METAUSDT",
+    "NVDAUSDT",
+    "TSLAUSDT"
+  ],
+  "cycles_completed": 4,
+  "accepted_count": 0,
+  "rejected_count": 4,
+  "code_commit": "0fa9fa2",
+  "config_hash": "sha256:f592798c28a8f63b",
+  "software_version": "0.1.0",
+  "performance_metrics": {
+    "total_trades": 0,
+    "win_rate": 0.0,
+    "total_pnl": "0",
+    "avg_pnl": "0",
+    "sharpe_ratio": 0.0,
+    "sortino_ratio": 0.0,
+    "max_drawdown": 0.0,
+    "profit_factor": null,
+    "turnover": 0.0,
+    "avg_hold_hours": 0.0,
+    "equity_curve": []
+  },
+  "llm_provider": "bitget-qwen",
+  "llm_model": "qwen3.8-max",
+  "llm_mode": "live"
+}
