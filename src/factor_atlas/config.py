@@ -64,6 +64,13 @@ COOLDOWN_SECONDS: int = 300
 DAILY_LOSS_LIMIT: str = "2000"  # Decimal string
 MAX_CONCENTRATION_PER_INSTRUMENT: int = 2
 
+# ATR-based sizing and exit thresholds
+ATR_PERIOD: int = 14
+MAX_RISK_PER_TRADE: str = "500"  # Risk $500 per trade on $100K account = 0.5%
+SL_ATR_MULT: float = 3.0  # Stop-loss = 3 × ATR
+TP_ATR_MULT: float = 6.0  # Take-profit = 6 × ATR (2:1 R:R)
+MAX_MARGIN_PCT: float = 0.25  # Hard cap: 25% of balance per trade
+
 # Paper-broker defaults
 DEFAULT_FEE_RATE: str = "0.001"
 DEFAULT_SLIPPAGE_BPS: str = "0.0005"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import NAMESPACE_DNS, uuid5
 
@@ -66,6 +67,7 @@ def run_cycle(
     broker_state: BrokerState | None = None,
     risk_config: RiskConfig | None = None,
     exchange_state: object | None = None,
+    sized_quantities: dict[str, Decimal] | None = None,
 ) -> CycleResult:
     """Run one autonomous cycle: observe -> propose -> evaluate -> decide -> gate -> execute.
 
@@ -123,7 +125,11 @@ def run_cycle(
             status="no_candidate",
         )
 
-    decision = decision_provider.decide(snapshot, validated, cycle_id)
+    qty: Decimal | None = None
+    if sized_quantities:
+        qty = sized_quantities.get(snapshot.instrument)
+
+    decision = decision_provider.decide(snapshot, validated, cycle_id, quantity=qty)
 
     if decision is None:
         return CycleResult(
@@ -204,6 +210,7 @@ def run_cycles(
     risk_config: RiskConfig | None = None,
     audit_logger: AuditLogger | None = None,
     exchange_state: object | None = None,
+    sized_quantities: dict[str, Decimal] | None = None,
 ) -> list[CycleResult]:
     """Run multiple autonomous cycles without human approval between them.
 
@@ -221,6 +228,7 @@ def run_cycles(
             broker_state=broker_state,
             risk_config=risk_config,
             exchange_state=exchange_state,
+            sized_quantities=sized_quantities,
         )
         results.append(result)
         if audit_logger is not None:

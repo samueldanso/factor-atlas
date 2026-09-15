@@ -1,0 +1,21 @@
+{
+  "run_id": "50fb2b14-b925-4999-96f2-e9be7643abad",
+  "start_timestamp": "2026-09-13T05:46:56.846959+00:00",
+  "end_timestamp": "2026-09-13T05:46:56.854576+00:00",
+  "timezone": "UTC",
+  "mode": "fixture",
+  "instruments": [
+    "RAAPLUSDT",
+    "RNVDAUSDT"
+  ],
+  "execution_instruments": [
+    "AAPLUSDT",
+    "NVDAUSDT"
+  ],
+  "cycles_completed": 2,
+  "accepted_count": 0,
+  "rejected_count": 2,
+  "code_commit": "83ea38d",
+  "config_hash": "sha256:f592798c28a8f63b",
+  "software_version": "0.1.0"
+}

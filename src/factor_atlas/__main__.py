@@ -50,6 +50,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Output directory for paper logs. Default: artifacts/paper-trading/",
     )
+    run_parser.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Run in continuous loop mode with --interval between rounds.",
+    )
+    run_parser.add_argument(
+        "--interval",
+        type=int,
+        default=14400,
+        help="Seconds between rounds in continuous mode. Default: 14400 (4 hours).",
+    )
+    run_parser.add_argument(
+        "--max-rounds",
+        type=int,
+        default=None,
+        help="Stop after N rounds (useful for cron). Default: unlimited.",
+    )
 
     # --- status ---
     sub.add_parser(
@@ -97,7 +114,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         from pathlib import Path
 
-        from factor_atlas.runner import run_paper_session, validate_config
+        from factor_atlas.runner import (
+            run_continuous,
+            run_paper_session,
+            validate_config,
+        )
 
         if args.dry_run:
             validate_config()
@@ -105,11 +126,20 @@ def main(argv: list[str] | None = None) -> int:
 
         output_dir = Path(args.output) if args.output else None
         try:
-            run_paper_session(
-                mode=args.mode,
-                cycles=args.cycles,
-                output_dir=output_dir,
-            )
+            if args.continuous:
+                run_continuous(
+                    mode=args.mode,
+                    cycles=args.cycles,
+                    interval=args.interval,
+                    output_dir=output_dir,
+                    max_rounds=args.max_rounds,
+                )
+            else:
+                run_paper_session(
+                    mode=args.mode,
+                    cycles=args.cycles,
+                    output_dir=output_dir,
+                )
         except (NotImplementedError, RuntimeError, OSError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1

@@ -1,0 +1,25 @@
+{
+  "run_id": "919104fc-fd1c-44af-adec-0526fe107424",
+  "start_timestamp": "2026-09-13T05:55:35.851586+00:00",
+  "end_timestamp": "2026-09-13T05:55:38.623647+00:00",
+  "timezone": "UTC",
+  "mode": "demo",
+  "instruments": [
+    "RAAPLUSDT",
+    "RMETAUSDT",
+    "RNVDAUSDT",
+    "RTSLAUSDT"
+  ],
+  "execution_instruments": [
+    "AAPLUSDT",
+    "METAUSDT",
+    "NVDAUSDT",
+    "TSLAUSDT"
+  ],
+  "cycles_completed": 4,
+  "accepted_count": 0,
+  "rejected_count": 4,
+  "code_commit": "83ea38d",
+  "config_hash": "sha256:f592798c28a8f63b",
+  "software_version": "0.1.0"
+}

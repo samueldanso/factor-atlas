@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -25,16 +26,19 @@ from factor_atlas.config import (
     RESEARCH_TO_EXECUTION,
 )
 from factor_atlas.contracts import MarketSnapshot
+from factor_atlas.evidence import EvidenceLogger
 from factor_atlas.fixtures import ACCEPTED_SNAPSHOT, RAAPLUSDT_OHLCV, REJECTED_SNAPSHOT
 from factor_atlas.llm import (
     BedrockProvider,
     FixtureLLMProvider,
     LLMDecisionProvider,
     LLMProposer,
+    QwenProvider,
 )
 from factor_atlas.metrics import compute_metrics, make_closed_trade
 from factor_atlas.orchestrator import CycleResult, run_cycles
 from factor_atlas.risk import RiskConfig
+from factor_atlas.sizing import compute_atr, compute_position_size
 
 SOFTWARE_VERSION = "0.1.0"
 
@@ -564,20 +568,40 @@ def _should_exit(
     current_price: Decimal,
     now: datetime,
     risk_config: RiskConfig,
+    atr: float | None = None,
 ) -> tuple[bool, str]:
-    """Return (should_exit, reason) for an open position."""
+    """Return (should_exit, reason) for an open position.
+
+    Uses ATR-based SL/TP when ``atr`` is provided, otherwise falls back
+    to percentage-based thresholds.
+    """
     cost = pos.entry_price
     if cost == 0:
         return False, ""
-    if pos.side == "buy":
-        unrealized_pct = float((current_price - pos.entry_price) / cost)
-    else:
-        unrealized_pct = float((pos.entry_price - current_price) / cost)
 
-    if unrealized_pct <= -risk_config.stop_loss_pct:
-        return True, f"stop_loss ({unrealized_pct:.2%})"
-    if unrealized_pct >= risk_config.take_profit_pct:
-        return True, f"take_profit ({unrealized_pct:.2%})"
+    if pos.side == "buy":
+        unrealized = current_price - pos.entry_price
+    else:
+        unrealized = pos.entry_price - current_price
+
+    # ATR-based exits (preferred)
+    if atr is not None and atr > 0:
+        sl_distance = Decimal(str(risk_config.sl_atr_mult * atr))
+        tp_distance = Decimal(str(risk_config.tp_atr_mult * atr))
+        if unrealized <= -sl_distance:
+            pct = float(unrealized / cost)
+            return True, f"stop_loss_atr ({pct:.2%}, SL={sl_distance:.2f})"
+        if unrealized >= tp_distance:
+            pct = float(unrealized / cost)
+            return True, f"take_profit_atr ({pct:.2%}, TP={tp_distance:.2f})"
+    else:
+        # Percentage fallback
+        unrealized_pct = float(unrealized / cost)
+        if unrealized_pct <= -risk_config.stop_loss_pct:
+            return True, f"stop_loss ({unrealized_pct:.2%})"
+        if unrealized_pct >= risk_config.take_profit_pct:
+            return True, f"take_profit ({unrealized_pct:.2%})"
+
     hold_h = (now - pos.entry_time).total_seconds() / 3600
     if hold_h >= risk_config.max_hold_hours:
         return True, f"max_hold ({hold_h:.1f}h)"
@@ -643,6 +667,8 @@ def _process_demo_exits(
     risk_config: RiskConfig,
     config_hash: str,
     paper_log_f: Any,
+    atr_values: dict[str, float] | None = None,
+    evidence: EvidenceLogger | None = None,
 ) -> None:
     """Check open positions for exit conditions and close them via bgc.
 
@@ -657,7 +683,10 @@ def _process_demo_exits(
         current_price = perp_prices.get(exec_sym)
         if current_price is None:
             continue
-        should_exit, reason = _should_exit(pos, current_price, now, risk_config)
+        atr = (atr_values or {}).get(instrument)
+        should_exit, reason = _should_exit(
+            pos, current_price, now, risk_config, atr=atr
+        )
         if should_exit:
             to_close.append(instrument)
             closed = make_closed_trade(pos, current_price, now)
@@ -682,6 +711,21 @@ def _process_demo_exits(
 
             close_record = _build_close_record(closed, config_hash, bgc_close_id)
             paper_log_f.write(json.dumps(close_record) + "\n")
+
+            if evidence is not None:
+                close_side = "sell" if pos.side == "buy" else "buy"
+                evidence.log_trade(
+                    cycle_id=pos.cycle_id,
+                    record_type="exit",
+                    instrument=exec_sym,
+                    side=close_side,
+                    price=str(current_price),
+                    size=str(pos.quantity),
+                    order_id=bgc_close_id,
+                    status="closed",
+                    pnl=str(closed.pnl),
+                    pnl_pct=closed.pnl_pct,
+                )
 
     for instrument in to_close:
         del broker_state.open_positions[instrument]
@@ -780,7 +824,7 @@ def run_paper_session(
     # Setup output
     run_id = str(uuid4())
     base_dir = output_dir or _DEFAULT_OUTPUT_DIR
-    run_dir = base_dir / run_id
+    run_dir = base_dir / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # Config
@@ -792,6 +836,10 @@ def run_paper_session(
     # Audit logger
     audit_path = run_dir / "audit_log.jsonl"
     audit_logger = AuditLogger(output_path=audit_path)
+
+    # Evidence logger (append-only structured logs)
+    logs_dir = (output_dir or _DEFAULT_OUTPUT_DIR) / "logs"
+    evidence = EvidenceLogger(logs_dir=logs_dir, run_id=run_id)
 
     state_path = (output_dir or _DEFAULT_OUTPUT_DIR) / "positions_state.json"
 
@@ -831,13 +879,25 @@ def run_paper_session(
             raise RuntimeError(f"Pre-flight exchange query failed: {e}") from e
 
     if mode == "demo":
-        llm_provider = BedrockProvider()
-        print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
-        llm_info: dict[str, str] = {
-            "llm_provider": "aws-bedrock",
-            "llm_model": llm_provider.model_name,
-            "llm_mode": "live",
-        }
+        # Prefer Qwen (Bitget-provided) over Bedrock (AWS)
+        qwen_key = os.environ.get("BITGET_QWEN_API_KEY", "")
+        llm_provider: BedrockProvider | QwenProvider | FixtureLLMProvider
+        if qwen_key:
+            llm_provider = QwenProvider()
+            print(f"  LLM: {llm_provider.model_name} (Bitget Qwen)")
+            llm_info: dict[str, str] = {
+                "llm_provider": "bitget-qwen",
+                "llm_model": llm_provider.model_name,
+                "llm_mode": "live",
+            }
+        else:
+            llm_provider = BedrockProvider()
+            print(f"  LLM: {llm_provider.model_name} (AWS Bedrock)")
+            llm_info = {
+                "llm_provider": "aws-bedrock",
+                "llm_model": llm_provider.model_name,
+                "llm_mode": "live",
+            }
     else:
         llm_provider = FixtureLLMProvider()  # type: ignore[assignment]
         llm_info = {
@@ -849,8 +909,31 @@ def run_paper_session(
     proposer = LLMProposer(llm_provider)
     decision_provider = LLMDecisionProvider(llm_provider)
 
+    evidence.log_run_start(
+        mode=mode,
+        interval=0,
+        llm_model=llm_info.get("llm_model", "unknown"),
+    )
+
     # Write paper log — open file here so exit processor can append close records
     paper_log_path = run_dir / "paper_log.jsonl"
+
+    # Compute ATR per instrument for sizing (before exits and cycles)
+    atr_values: dict[str, float] = {}
+    for sym, df in ohlcv_data.items():
+        if not df.empty and len(df) >= risk_config.atr_period:
+            atr_values[sym] = compute_atr(df, risk_config.atr_period)
+
+    # Compute sized quantities per instrument
+    sized_quantities: dict[str, Decimal] = {}
+    for sym, df in ohlcv_data.items():
+        if sym in atr_values and not df.empty:
+            price = Decimal(str(df.iloc[-1]["close"]))
+            sized_quantities[sym] = compute_position_size(
+                price=price,
+                atr=atr_values[sym],
+                risk_config=risk_config,
+            )
 
     with paper_log_path.open("a") as paper_log_f:
         # Demo: process exits from prior runs before opening new positions
@@ -863,7 +946,13 @@ def run_paper_session(
             )
             perp_prices = _fetch_perp_prices(exec_symbols)
             _process_demo_exits(
-                broker_state, perp_prices, risk_config, config_hash, paper_log_f
+                broker_state,
+                perp_prices,
+                risk_config,
+                config_hash,
+                paper_log_f,
+                atr_values=atr_values,
+                evidence=evidence,
             )
 
         results = run_cycles(
@@ -875,6 +964,7 @@ def run_paper_session(
             risk_config=risk_config,
             audit_logger=audit_logger,
             exchange_state=exchange_state,
+            sized_quantities=sized_quantities,
         )
 
         end_time = datetime.now(tz=UTC)
@@ -882,6 +972,78 @@ def run_paper_session(
         # Print human-readable cycle summaries
         for result in results:
             _print_cycle_summary(result)
+
+            # --- Evidence logging per cycle ---
+            instrument = result.snapshot.instrument
+            exec_sym = research_to_execution(instrument)
+
+            # Build hypothesis / validation dicts for the best candidate
+            hyp_dict: dict[str, Any] | None = None
+            val_dict: dict[str, Any] | None = None
+            if result.validated:
+                hyp, val = result.validated[0]
+                hyp_dict = {
+                    "factor_name": hyp.factor_name,
+                    "parameters": hyp.parameters,
+                    "direction": hyp.direction,
+                    "rationale": hyp.rationale,
+                }
+                val_dict = {
+                    "sharpe": val.metrics.sharpe_ratio.value,
+                    "max_drawdown": val.metrics.max_drawdown.value,
+                    "passed": val.passed,
+                    "observations": val.observations,
+                }
+
+            evidence.log_event(
+                cycle_id=result.cycle_id,
+                instrument=instrument,
+                price=str(result.snapshot.close),
+                source=result.snapshot.source,
+                hypothesis=hyp_dict,
+                validation=val_dict,
+            )
+
+            # Decision
+            if result.decision is not None:
+                d = result.decision
+                evidence.log_decision(
+                    cycle_id=result.cycle_id,
+                    instrument=exec_sym,
+                    selected_hypothesis=d.hypothesis_id,
+                    side=d.side,
+                    quantity=str(d.quantity),
+                    price=str(d.price),
+                    rationale=d.rationale,
+                )
+            else:
+                evidence.log_decision(
+                    cycle_id=result.cycle_id,
+                    instrument=exec_sym,
+                    selected_hypothesis=None,
+                    side=None,
+                    quantity=None,
+                    price=None,
+                    rationale=result.status,
+                )
+
+            # Risk gates
+            if result.gate_results is not None:
+                gates_list = [
+                    {
+                        "gate_name": g.gate_name,
+                        "passed": g.passed,
+                        "reason": g.reason,
+                    }
+                    for g in result.gate_results
+                ]
+                all_passed = all(g.passed for g in result.gate_results)
+                evidence.log_risk(
+                    cycle_id=result.cycle_id,
+                    instrument=exec_sym,
+                    gates=gates_list,
+                    verdict="all_passed" if all_passed else "blocked",
+                )
 
         # Register newly opened positions
         _register_open_positions(results, broker_state)
@@ -907,6 +1069,16 @@ def run_paper_session(
                         )
                         bgc_order_ids[result.cycle_id] = str(order_id)
                         print(f"  Entry {exec_sym} {d.side} → orderId={order_id}")
+                        evidence.log_trade(
+                            cycle_id=result.cycle_id,
+                            record_type="entry",
+                            instrument=exec_sym,
+                            side=d.side,
+                            price=str(d.price),
+                            size=str(d.quantity),
+                            order_id=str(order_id),
+                            status="filled",
+                        )
                     except (RuntimeError, json.JSONDecodeError) as e:
                         print(
                             f"  Entry order failed for {exec_sym}: {e}", file=sys.stderr
@@ -999,6 +1171,12 @@ def run_paper_session(
     print(f"  Output: {run_dir}")
     print(f"{'=' * 60}")
 
+    evidence.log_run_end(
+        cycles=len(results),
+        accepted=manifest["accepted_count"],
+        skipped=manifest["rejected_count"],
+    )
+
     return run_dir
 
 
@@ -1027,10 +1205,55 @@ def validate_config() -> None:
     )
 
 
+def run_continuous(
+    mode: str = "demo",
+    cycles: int = 4,
+    interval: int = 14400,
+    output_dir: Path | None = None,
+    max_rounds: int | None = None,
+) -> None:
+    """Run paper sessions in a loop with sleep between rounds.
+
+    Handles SIGINT/SIGTERM for graceful shutdown. If ``max_rounds`` is set,
+    stops after that many rounds (useful for GitHub Actions cron).
+    """
+    import signal
+    import threading
+
+    shutdown_event = threading.Event()
+
+    def _handle_signal(signum: int, frame: object) -> None:
+        print(f"\nReceived signal {signum}, finishing current round...")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    round_num = 0
+    while not shutdown_event.is_set():
+        round_num += 1
+        print(f"\n{'=' * 60}")
+        print(f"  Continuous round {round_num} | interval={interval}s")
+        print(f"{'=' * 60}")
+        try:
+            run_paper_session(mode=mode, cycles=cycles, output_dir=output_dir)
+        except (ValueError, RuntimeError, OSError) as e:
+            print(f"  Round {round_num} failed: {e}", file=sys.stderr)
+
+        if max_rounds is not None and round_num >= max_rounds:
+            print(f"  Reached max_rounds={max_rounds}, stopping.")
+            break
+
+        if not shutdown_event.is_set():
+            print(f"  Sleeping {interval}s until next round...")
+            shutdown_event.wait(timeout=interval)
+
+
 __all__ = [
     "SOFTWARE_VERSION",
     "compute_config_hash",
     "get_git_commit",
+    "run_continuous",
     "run_paper_session",
     "validate_config",
 ]

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FactorAtlas — Evidence Logs</title>
+  <style>
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 2rem; }
+    h1 { color: #58a6ff; }
+    a { color: #58a6ff; }
+    .log-list { list-style: none; padding: 0; }
+    .log-list li { margin: 0.5rem 0; }
+    .desc { color: #8b949e; margin-left: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>FactorAtlas — Evidence Logs</h1>
+  <p>Structured evidence from the autonomous factor-discovery agent.</p>
+  <ul class="log-list">
+    <li><a href="agent.log">agent.log</a><span class="desc"> — Human-readable timeline (start here)</span></li>
+    <li><a href="events.jsonl">events.jsonl</a><span class="desc"> — Observe + hypothesis + validation</span></li>
+    <li><a href="decisions.jsonl">decisions.jsonl</a><span class="desc"> — LLM selection + rationale</span></li>
+    <li><a href="risk.jsonl">risk.jsonl</a><span class="desc"> — 14 risk gate verdicts</span></li>
+    <li><a href="trades.jsonl">trades.jsonl</a><span class="desc"> — Entry/exit orders + PnL</span></li>
+  </ul>
+  <p style="margin-top: 2rem; color: #8b949e;">
+    Each record carries run_id + cycle_id for cross-file tracing.
+    <br>Visual reports: <a href="../runs/">runs/</a>
+  </p>
+</body>
+</html>

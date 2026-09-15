@@ -225,10 +225,12 @@ class TestCLI:
             ["run", "--mode", "fixture", "--cycles", "1", "--output", str(tmp_path)]
         )
         assert rc == 0
-        # Should have created a run directory inside tmp_path
-        subdirs = list(tmp_path.iterdir())
-        assert len(subdirs) == 1
-        assert (subdirs[0] / "paper_log.jsonl").exists()
+        # Should have created runs/ and logs/ directories inside tmp_path
+        assert (tmp_path / "logs").is_dir()
+        assert (tmp_path / "runs").is_dir()
+        run_dirs = list((tmp_path / "runs").iterdir())
+        assert len(run_dirs) == 1
+        assert (run_dirs[0] / "paper_log.jsonl").exists()
 
     def test_demo_mode_exits_cleanly_on_bgc_failure(self, tmp_path: Path) -> None:
         """Demo mode returns exit code 1 (not an unhandled exception) when bgc fails."""
@@ -265,14 +267,17 @@ class TestDemoLLMFailure:
     """Demo mode must not silently fall back to fixture LLM."""
 
     def test_demo_mode_raises_when_bedrock_fails(self, tmp_path: Path) -> None:
-        """Demo mode must fail loudly when BedrockProvider init fails."""
+        """Demo mode must fail loudly when LLM provider init fails."""
         from unittest.mock import patch
 
         from factor_atlas.__main__ import main
 
-        with patch(
-            "factor_atlas.runner.BedrockProvider",
-            side_effect=RuntimeError("Bedrock unavailable"),
+        with (
+            patch.dict("os.environ", {"BITGET_QWEN_API_KEY": ""}, clear=False),
+            patch(
+                "factor_atlas.runner.BedrockProvider",
+                side_effect=RuntimeError("Bedrock unavailable"),
+            ),
         ):
             rc = main(
                 ["run", "--mode", "demo", "--cycles", "1", "--output", str(tmp_path)]
