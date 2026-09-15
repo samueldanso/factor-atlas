@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FactorAtlas — Evidence Report</title>
+<style>
+:root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #4f8cff;
+    --green: #22c55e; --red: #ef4444; --yellow: #f59e0b;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); padding: 24px; max-width: 1000px; margin: 0 auto; line-height: 1.5; }
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+h2 { font-size: 1.2rem; margin: 32px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 1rem; margin-bottom: 8px; color: var(--muted); }
+.subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 16px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+.stat-value { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+.badge.success { background: rgba(34,197,94,0.15); color: var(--green); }
+.badge.danger { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge.warn { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.badge.muted { background: rgba(139,148,158,0.15); color: var(--muted); }
+.cycle-card, .trade-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+.cycle-header, .trade-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.cycle-body, .trade-body { padding: 16px; }
+.instrument { font-weight: 700; font-size: 1rem; }
+.factor-tag { background: rgba(79,140,255,0.15); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
+.side-buy { color: var(--green); font-weight: 600; }
+.side-sell { color: var(--red); font-weight: 600; }
+.cycle-meta, .trade-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px; font-size: 0.85rem; margin-bottom: 12px; }
+.rationale { background: rgba(79,140,255,0.05); border-left: 3px solid var(--accent); padding: 10px 14px; margin-top: 10px; font-size: 0.85rem; border-radius: 0 6px 6px 0; }
+.gates { margin-top: 12px; }
+.gates-summary { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+.gates-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.gate-pass, .gate-fail { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 500; cursor: help; }
+.gate-pass { background: rgba(34,197,94,0.1); color: var(--green); }
+.gate-fail { background: rgba(239,68,68,0.15); color: var(--red); font-weight: 700; }
+.pipeline { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
+.pipeline-stage { display: flex; gap: 12px; padding: 8px 12px; border-radius: 4px; font-size: 0.8rem; border-left: 3px solid var(--border); }
+.pipeline-stage.stage-pass { border-left-color: var(--green); }
+.pipeline-stage.stage-fail { border-left-color: var(--red); }
+.pipeline-stage.stage-skip { border-left-color: var(--muted); opacity: 0.7; }
+.stage-name { min-width: 70px; font-weight: 700; color: var(--accent); font-size: 0.75rem; }
+.stage-detail { color: var(--muted); }
+.stage-detail em { color: var(--text); font-style: normal; }
+.eval-pass { color: var(--green); }
+.eval-fail { color: var(--red); }
+.trade-card.success { border-left: 3px solid var(--green); }
+.trade-card.danger { border-left: 3px solid var(--red); }
+code { background: rgba(139,148,158,0.15); padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; word-break: break-all; }
+.equity-chart { margin: 16px 0; }
+.equity-svg { width: 100%; max-width: 500px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.75rem; text-align: center; }
+.agent-flow { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.flow-steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; }
+.flow-step { background: rgba(79,140,255,0.1); border: 1px solid rgba(79,140,255,0.3); padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
+.flow-arrow { color: var(--muted); font-size: 1.2rem; }
+@media (max-width: 600px) {
+    body { padding: 12px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .cycle-meta, .trade-meta { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<h1>FactorAtlas — Evidence Report</h1>
+<div class="subtitle">
+    Autonomous Factor Discovery Agent for Bitget AI Genesis S2<br>
+    Run: <code>91382df7-85a3-4bb7-a6ad-00f31018f0c4</code> | Generated: 2026-09-15 19:33 UTC
+</div>
+
+<div class="agent-flow">
+    <h3>Agent Flow (each cycle) — rToken SPOT research → USDT-FUTURES perp execution</h3>
+    <div class="flow-steps">
+        <span class="flow-step">rToken SPOT Data<br><small>RAAPLUSDT, RNVDAUSDT…</small></span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">LLM Hypotheses</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Factor Validation</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">LLM Decision</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">14 Risk Gates</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Stock Perp Order<br><small>AAPLUSDT (USDT-FUTURES)</small></span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Verify orderStatus</span>
+    </div>
+</div>
+
+<h2>Run Summary</h2>
+<div class="summary-grid">
+    <div class="stat-card"><div class="stat-value">4</div><div class="stat-label">Cycles</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--green)">0</div><div class="stat-label">Accepted</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--red)">4</div><div class="stat-label">Rejected</div></div>
+    <div class="stat-card"><div class="stat-value">0</div><div class="stat-label">Closed Trades</div></div>
+    <div class="stat-card"><div class="stat-value">0.00%</div><div class="stat-label">Win Rate</div></div>
+    <div class="stat-card"><div class="stat-value">0.00</div><div class="stat-label">Sharpe</div></div>
+    <div class="stat-card"><div class="stat-value">0.00</div><div class="stat-label">Sortino</div></div>
+    <div class="stat-card"><div class="stat-value">$0.00</div><div class="stat-label">Max Drawdown</div></div>
+    <div class="stat-card"><div class="stat-value">$0.00</div><div class="stat-label">Total PnL</div></div>
+    <div class="stat-card"><div class="stat-value">—</div><div class="stat-label">Profit Factor</div></div>
+    <div class="stat-card"><div class="stat-value">0.0h</div><div class="stat-label">Avg Hold</div></div>
+</div>
+
+<div class="cycle-meta" style="font-size:0.85rem; margin-bottom:24px;">
+    <div><strong>Mode:</strong> demo | <strong>LLM:</strong> qwen3.8-max (bitget-qwen)</div>
+    <div><strong>Time:</strong> 2026-09-15T19:31:05.668254+00:00 → 2026-09-15T19:33:39.061733+00:00</div>
+    <div><strong>Research (rToken SPOT):</strong> RAAPLUSDT, RMETAUSDT, RNVDAUSDT, RTSLAUSDT</div>
+    <div><strong>Execution (USDT-FUTURES):</strong> AAPLUSDT, METAUSDT, NVDAUSDT, TSLAUSDT</div>
+    <div><strong>Commit:</strong> <code>287a5da</code> | <strong>Config:</strong> <code>sha256:f592798c28a8f63b</code></div>
+</div>
+
+
+
+
+
+<h2>Cycle Details</h2>
+
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">AAPLUSDT</span>
+            <span class="badge danger">orderStatus: REJECTED</span>
+            <span class="side-buy">BUY</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>productType:</strong> USDT-FUTURES</div>
+                <div><strong>price:</strong> $329.93</div>
+                <div><strong>size:</strong> 27</div>
+                <div><strong>Sharpe:</strong> 5.0569</div>
+                <div><strong>orderId:</strong> <code>—</code></div>
+                <div><strong>verification:</strong> <span class="badge warn">not_applicable</span></div>
+            </div>
+            <div class="rationale"><strong>LLM Rationale:</strong> Candidate 0 has the highest Sharpe ratio (5.0569) among validated candidates and an acceptable max drawdown, making it the strongest trade selection.</div>
+            
+        <div class="gates">
+            <div class="gates-summary">13/14 gates passed</div>
+            <div class="gates-list"><span class="gate-pass" title="factor &#x27;mean_reversion&#x27; is in allowlist">factor_allowlist</span> <span class="gate-pass" title="data age 3.5h within 24h">data_freshness</span> <span class="gate-pass" title="observations 28 &gt;= 20">min_sample_size</span> <span class="gate-pass" title="validation passed">validation_threshold</span> <span class="gate-pass" title="notional 8907.975 &lt;= 10000">max_notional</span> <span class="gate-fail" title="positions 3 &gt;= 3">max_position</span> <span class="gate-pass" title="total exposure 8907.975 &lt;= 50000">exposure_cap</span> <span class="gate-pass" title="no prior order for instrument">cooldown</span> <span class="gate-pass" title="daily loss 0 &lt; 2000">daily_loss_cap</span> <span class="gate-pass" title="not a duplicate">duplicate_suppression</span> <span class="gate-pass" title="instrument positions 0 &lt; 2">concentration_guard</span> <span class="gate-pass" title="quantity 27 &lt;= 1000000">max_quantity</span> <span class="gate-pass" title="balance 49928.74388085 &gt;= notional 8907.975">balance_check</span> <span class="gate-pass" title="no pending orders for instrument">pending_order_check</span></div>
+        </div>
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RAAPLUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: ema_crossover, momentum, mean_reversion, volatility_breakout, volume_spike</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">2/5 passed validation<br><span class="eval-fail">[fail] Sharpe=0.50 DD=-0.0627 — sharpe below threshold: 0.4958 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=0.00 DD=0.0000 — no signal: all test signals are 0</span><br><span class="eval-pass">[pass] Sharpe=5.06 DD=-0.0147</span><br><span class="eval-fail">[fail] Sharpe=-2.89 DD=-0.0076 — sharpe below threshold: -2.8901 &lt; 0.5</span><br><span class="eval-pass">[pass] Sharpe=2.45 DD=-0.0074</span></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: rejected<br><em>Candidate 0 has the highest Sharpe ratio (5.0569) among validated candidates and an acceptable max drawdown, making it the strongest trade selection.</em></div>
+                </div>
+                <div class="pipeline-stage stage-fail">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">BLOCKED (14 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: rejected | Order: fbfb36fc-a7a8-5c78-9259-ce77d31f5249</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: rejected | PnL estimate: 0.0000</div>
+                </div></div>
+        </div>
+    </div>
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">METAUSDT</span>
+            <span class="badge danger">orderStatus: REJECTED</span>
+            <span class="side-buy">BUY</span>
+            <span class="factor-tag">momentum</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>productType:</strong> USDT-FUTURES</div>
+                <div><strong>price:</strong> $671.87</div>
+                <div><strong>size:</strong> 9</div>
+                <div><strong>Sharpe:</strong> 4.4604</div>
+                <div><strong>orderId:</strong> <code>—</code></div>
+                <div><strong>verification:</strong> <span class="badge warn">not_applicable</span></div>
+            </div>
+            <div class="rationale"><strong>LLM Rationale:</strong> Only validated candidate; momentum long with strong Sharpe and low max drawdown.</div>
+            
+        <div class="gates">
+            <div class="gates-summary">13/14 gates passed</div>
+            <div class="gates-list"><span class="gate-pass" title="factor &#x27;momentum&#x27; is in allowlist">factor_allowlist</span> <span class="gate-pass" title="data age 3.5h within 24h">data_freshness</span> <span class="gate-pass" title="observations 28 &gt;= 20">min_sample_size</span> <span class="gate-pass" title="validation passed">validation_threshold</span> <span class="gate-pass" title="notional 6046.83 &lt;= 10000">max_notional</span> <span class="gate-fail" title="positions 3 &gt;= 3">max_position</span> <span class="gate-pass" title="total exposure 6046.83 &lt;= 50000">exposure_cap</span> <span class="gate-pass" title="no prior order for instrument">cooldown</span> <span class="gate-pass" title="daily loss 0 &lt; 2000">daily_loss_cap</span> <span class="gate-pass" title="not a duplicate">duplicate_suppression</span> <span class="gate-pass" title="instrument positions 0 &lt; 2">concentration_guard</span> <span class="gate-pass" title="quantity 9 &lt;= 1000000">max_quantity</span> <span class="gate-pass" title="balance 49928.74388085 &gt;= notional 6046.83">balance_check</span> <span class="gate-pass" title="no pending orders for instrument">pending_order_check</span></div>
+        </div>
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RMETAUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: momentum, ema_crossover, volatility_breakout, volume_spike, mean_reversion</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">1/5 passed validation<br><span class="eval-pass">[pass] Sharpe=4.46 DD=-0.0141</span><br><span class="eval-fail">[fail] Sharpe=-1.38 DD=-0.1188 — sharpe below threshold: -1.3806 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-4.12 DD=-0.0083 — sharpe below threshold: -4.1211 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-2.64 DD=-0.0049 — sharpe below threshold: -2.6359 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-0.81 DD=-0.0172 — sharpe below threshold: -0.8054 &lt; 0.5</span></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: rejected<br><em>Only validated candidate; momentum long with strong Sharpe and low max drawdown.</em></div>
+                </div>
+                <div class="pipeline-stage stage-fail">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">BLOCKED (14 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: rejected | Order: 31c215cc-ffc7-5000-9d81-2abc3dbc561f</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: rejected | PnL estimate: 0.0000</div>
+                </div></div>
+        </div>
+    </div>
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">NVDAUSDT</span>
+            <span class="badge danger">orderStatus: REJECTED</span>
+            <span class="side-buy">BUY</span>
+            <span class="factor-tag">mean_reversion</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>productType:</strong> USDT-FUTURES</div>
+                <div><strong>price:</strong> $212.10</div>
+                <div><strong>size:</strong> 38</div>
+                <div><strong>Sharpe:</strong> 2.5504</div>
+                <div><strong>orderId:</strong> <code>—</code></div>
+                <div><strong>verification:</strong> <span class="badge warn">not_applicable</span></div>
+            </div>
+            <div class="rationale"><strong>LLM Rationale:</strong> Only validated candidate; passed validation with strong Sharpe and minimal drawdown.</div>
+            
+        <div class="gates">
+            <div class="gates-summary">13/14 gates passed</div>
+            <div class="gates-list"><span class="gate-pass" title="factor &#x27;mean_reversion&#x27; is in allowlist">factor_allowlist</span> <span class="gate-pass" title="data age 3.6h within 24h">data_freshness</span> <span class="gate-pass" title="observations 28 &gt;= 20">min_sample_size</span> <span class="gate-pass" title="validation passed">validation_threshold</span> <span class="gate-pass" title="notional 8059.990 &lt;= 10000">max_notional</span> <span class="gate-fail" title="positions 3 &gt;= 3">max_position</span> <span class="gate-pass" title="total exposure 8059.990 &lt;= 50000">exposure_cap</span> <span class="gate-pass" title="no prior order for instrument">cooldown</span> <span class="gate-pass" title="daily loss 0 &lt; 2000">daily_loss_cap</span> <span class="gate-pass" title="not a duplicate">duplicate_suppression</span> <span class="gate-pass" title="instrument positions 0 &lt; 2">concentration_guard</span> <span class="gate-pass" title="quantity 38 &lt;= 1000000">max_quantity</span> <span class="gate-pass" title="balance 49928.74388085 &gt;= notional 8059.990">balance_check</span> <span class="gate-pass" title="no pending orders for instrument">pending_order_check</span></div>
+        </div>
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RNVDAUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: momentum, mean_reversion, volatility_breakout, volume_spike, ema_crossover</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">1/5 passed validation<br><span class="eval-fail">[fail] Sharpe=-3.44 DD=-0.0598 — sharpe below threshold: -3.4383 &lt; 0.5</span><br><span class="eval-pass">[pass] Sharpe=2.55 DD=-0.0049</span><br><span class="eval-fail">[fail] Sharpe=-3.72 DD=-0.0950 — sharpe below threshold: -3.7200 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-1.98 DD=-0.0264 — sharpe below threshold: -1.9751 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-0.40 DD=-0.0853 — sharpe below threshold: -0.3992 &lt; 0.5</span></div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: rejected<br><em>Only validated candidate; passed validation with strong Sharpe and minimal drawdown.</em></div>
+                </div>
+                <div class="pipeline-stage stage-fail">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">BLOCKED (14 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: rejected | Order: 99f07cbb-2153-5545-b7eb-44ab81550057</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: rejected | PnL estimate: 0.0000</div>
+                </div></div>
+        </div>
+    </div>
+    <div class="cycle-card">
+        <div class="cycle-header">
+            <span class="instrument">TSLAUSDT</span>
+            <span class="badge muted">orderStatus: NO_CANDIDATE</span>
+            <span class="">—</span>
+            <span class="factor-tag">—</span>
+        </div>
+        <div class="cycle-body">
+            <div class="cycle-meta">
+                <div><strong>productType:</strong> USDT-FUTURES</div>
+                <div><strong>price:</strong> $355.90</div>
+                <div><strong>size:</strong> 0</div>
+                <div><strong>Sharpe:</strong> —</div>
+                <div><strong>orderId:</strong> <code>—</code></div>
+                <div><strong>verification:</strong> <span class="badge warn">not_applicable</span></div>
+            </div>
+            
+            
+            <div class="pipeline">
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">OBSERVE</div>
+                    <div class="stage-detail">Source: bitget-demo | RTSLAUSDT</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">PROPOSE</div>
+                    <div class="stage-detail">5 hypotheses: momentum, mean_reversion, volatility_breakout, volume_spike, ema_crossover</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">EVALUATE</div>
+                    <div class="stage-detail">0/5 passed validation<br><span class="eval-fail">[fail] Sharpe=-2.06 DD=-0.1136 — sharpe below threshold: -2.0607 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=0.00 DD=0.0000 — no signal: all test signals are 0</span><br><span class="eval-fail">[fail] Sharpe=-4.20 DD=-0.1142 — sharpe below threshold: -4.1999 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-1.63 DD=-0.0905 — sharpe below threshold: -1.6336 &lt; 0.5</span><br><span class="eval-fail">[fail] Sharpe=-2.58 DD=-0.1191 — sharpe below threshold: -2.5762 &lt; 0.5</span></div>
+                </div>
+                <div class="pipeline-stage stage-skip">
+                    <div class="stage-name">DECIDE</div>
+                    <div class="stage-detail">Status: no_candidate<br><em>no validated candidate</em></div>
+                </div>
+                <div class="pipeline-stage stage-fail">
+                    <div class="stage-name">GATE</div>
+                    <div class="stage-detail">BLOCKED (0 gates)</div>
+                </div>
+                <div class="pipeline-stage stage-skip">
+                    <div class="stage-name">EXECUTE</div>
+                    <div class="stage-detail">Status: skipped | Order: —</div>
+                </div>
+                <div class="pipeline-stage stage-pass">
+                    <div class="stage-name">LEARN</div>
+                    <div class="stage-detail">Cycle: no_candidate | PnL estimate: 0.0000</div>
+                </div></div>
+        </div>
+    </div>
+
+<div class="footer">
+    FactorAtlas v0.1.0 — Bitget AI Genesis Season 2, Track 2 Agentic Trading<br>
+    This report was generated from machine-produced audit logs. All orders executed on Bitget Demo (paper trading).
+</div>
+</body>
+</html>
