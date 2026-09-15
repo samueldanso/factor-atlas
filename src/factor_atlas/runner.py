@@ -824,7 +824,7 @@ def run_paper_session(
     # Setup output
     run_id = str(uuid4())
     base_dir = output_dir or _DEFAULT_OUTPUT_DIR
-    run_dir = base_dir / run_id
+    run_dir = base_dir / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # Config
@@ -975,6 +975,7 @@ def run_paper_session(
 
             # --- Evidence logging per cycle ---
             instrument = result.snapshot.instrument
+            exec_sym = research_to_execution(instrument)
 
             # Build hypothesis / validation dicts for the best candidate
             hyp_dict: dict[str, Any] | None = None
@@ -1008,7 +1009,7 @@ def run_paper_session(
                 d = result.decision
                 evidence.log_decision(
                     cycle_id=result.cycle_id,
-                    instrument=instrument,
+                    instrument=exec_sym,
                     selected_hypothesis=d.hypothesis_id,
                     side=d.side,
                     quantity=str(d.quantity),
@@ -1018,7 +1019,7 @@ def run_paper_session(
             else:
                 evidence.log_decision(
                     cycle_id=result.cycle_id,
-                    instrument=instrument,
+                    instrument=exec_sym,
                     selected_hypothesis=None,
                     side=None,
                     quantity=None,
@@ -1039,7 +1040,7 @@ def run_paper_session(
                 all_passed = all(g.passed for g in result.gate_results)
                 evidence.log_risk(
                     cycle_id=result.cycle_id,
-                    instrument=instrument,
+                    instrument=exec_sym,
                     gates=gates_list,
                     verdict="all_passed" if all_passed else "blocked",
                 )

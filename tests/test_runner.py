@@ -225,10 +225,10 @@ class TestCLI:
             ["run", "--mode", "fixture", "--cycles", "1", "--output", str(tmp_path)]
         )
         assert rc == 0
-        # Should have created a run directory (+ logs dir) inside tmp_path
-        subdirs = list(tmp_path.iterdir())
-        assert len(subdirs) == 2  # run dir + logs dir
-        run_dirs = [d for d in subdirs if d.name != "logs"]
+        # Should have created runs/ and logs/ directories inside tmp_path
+        assert (tmp_path / "logs").is_dir()
+        assert (tmp_path / "runs").is_dir()
+        run_dirs = list((tmp_path / "runs").iterdir())
         assert len(run_dirs) == 1
         assert (run_dirs[0] / "paper_log.jsonl").exists()
 
