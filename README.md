@@ -11,8 +11,8 @@
 Autonomous agent that discovers market factors on Bitget **rToken** US stocks, validates trading hypotheses, and executes paper trades on **stock perpetuals** via Bitget Demo — with no human in the loop.
 
 > **Judges — start here:**
-> - [Evidence Logs](https://samueldanso.github.io/factor-atlas/logs/) — agent.log, events, decisions, risk, trades ([fallback](https://github.com/samueldanso/factor-atlas/tree/main/artifacts/paper-trading/logs))
-> - [Trade Records](https://samueldanso.github.io/factor-atlas/logs/trades.jsonl) — raw trade records with Bitget `orderId`
+> - [Live Dashboard](https://samueldanso.github.io/factor-atlas/) — stats, pipeline, agent timeline, trade history, risk control
+> - [Evidence Logs](https://samueldanso.github.io/factor-atlas/logs/) — raw JSONL: events, decisions, risk, trades
 > - [Previous Evidence Report](https://htmlpreview.github.io/?https://github.com/samueldanso/factor-atlas/blob/main/docs/evidence/evidence_report.html) — visual proof of full cycle (pre-upgrade)
 > - [Submission Form](docs/SUBMISSION.md) — all form answers ready to paste
 > - [Run It Yourself](#quickstart) — `uv sync && uv run python -m factor_atlas run --mode fixture --cycles 2`
