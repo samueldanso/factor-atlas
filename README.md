@@ -1,9 +1,9 @@
 # FactorAtlas
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-312%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-326%20passing-brightgreen.svg)](tests/)
 [![Bitget Demo](https://img.shields.io/badge/Bitget-Demo%20Paper%20Trading-00C087.svg)](https://www.bitget.com/)
-[![LLM](https://img.shields.io/badge/LLM-Claude%20Sonnet%204.6-blueviolet.svg)](https://aws.amazon.com/bedrock/)
+[![LLM](https://img.shields.io/badge/LLM-Qwen%203.8%20Max-blueviolet.svg)](https://hackathon.bitgetops.com/v1)
 [![Track](https://img.shields.io/badge/Track%202-Agentic%20Trading-orange.svg)](#track-alignment)
 
 **Bitget AI Genesis Season 2 — Track 2: Agentic Trading → Factor Discovery Agent**
@@ -12,149 +12,164 @@ Autonomous agent that discovers market factors on Bitget **rToken** US stocks, v
 
 > **Judges — start here:**
 > - [Evidence Logs](https://samueldanso.github.io/factor-atlas/logs/) — agent.log, events, decisions, risk, trades
-> - [Paper Log (JSONL)](https://samueldanso.github.io/factor-atlas/logs/trades.jsonl) — raw trade records with Bitget `orderId`
+> - [Trade Records](https://samueldanso.github.io/factor-atlas/logs/trades.jsonl) — raw trade records with Bitget `orderId`
 > - [Submission Form](docs/SUBMISSION.md) — all form answers ready to paste
 > - [Run It Yourself](#quickstart) — `uv sync && uv run python -m factor_atlas run --mode fixture --cycles 2`
 
 ---
 
-## Two-Layer Instrument Architecture
+## How It Works — Event → Decision → Execution
 
-FactorAtlas uses **two instrument layers** — rToken SPOT for research, stock perpetuals for execution:
+> *"How does the Agent autonomously propose hypotheses, discover alpha factors, and translate into tradable decisions?"*
+
+The agent runs an autonomous cycle every 4 hours. Each cycle scans 4 US stock rTokens and proceeds through 8 stages with no human intervention:
+
+```
+OBSERVE → PROPOSE → VALIDATE → DECIDE → GATE → EXECUTE → VERIFY → LOG
+```
+
+### 1. Observe (Event)
+
+The agent fetches 90 daily candles for each rToken instrument (`RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT`) from Bitget's SPOT API. This is the raw market event — 24/7 price data for US stocks (Apple, NVIDIA, Tesla, Meta).
+
+**Evidence:** `events.jsonl` — every observation with instrument, price, timestamp, data source.
+
+### 2. Propose (Hypothesis)
+
+Qwen 3.8 Max (via Bitget's hackathon endpoint) receives the latest market snapshot and proposes up to 5 factor hypotheses from a **fixed vocabulary**:
+
+| Factor | What it detects |
+|--------|----------------|
+| `momentum` | Price trend continuation over lookback period |
+| `mean_reversion` | Price deviation from rolling mean, expect revert |
+| `volatility_breakout` | Bollinger Band expansion signals directional move |
+| `volume_spike` | Abnormal volume indicates institutional activity |
+| `ema_crossover` | Fast/slow EMA crossover signals trend change |
+
+The LLM proposes specific parameters (lookback, thresholds), direction (long/short), and a written rationale. It cannot invent new factors or generate code.
+
+**Evidence:** `events.jsonl` — each hypothesis with factor name, parameters, direction, LLM rationale.
+
+### 3. Validate (Backtest)
+
+Each hypothesis is tested with a **deterministic walk-forward backtest** on the 90-day OHLCV data:
+- 70% train / 30% test split
+- Leakage detection (train/test overlap check)
+- Computes: Sharpe ratio, Sortino ratio, max drawdown, win rate, turnover
+- Applies simulated fees (0.1%) and slippage (5 bps)
+- Pass criteria: Sharpe >= 0.5, drawdown > -20%, minimum 20 observations
+
+Failed hypotheses are rejected with specific reasons. The LLM cannot override validation.
+
+**Evidence:** `events.jsonl` — validation results (Sharpe, drawdown, passed/failed, observations) attached to each hypothesis.
+
+### 4. Decide (LLM Selection)
+
+The LLM reviews all validated (passed) candidates and selects the best one — or explicitly declines to trade. It outputs:
+- Which hypothesis to trade (by index)
+- Written rationale explaining why
+
+If no hypothesis passed validation, the agent decides **not to trade** and logs the reason.
+
+**Evidence:** `decisions.jsonl` — selected hypothesis, side, quantity, price, full LLM rationale (or decline reason).
+
+### 5. Gate (Risk Control)
+
+The selected trade must pass **all 14 deterministic risk gates**. The LLM has no influence over gates — a single failure vetoes the trade:
+
+| Gate | Checks | Threshold |
+|------|--------|-----------|
+| `factor_allowlist` | Factor in approved vocabulary | in set |
+| `data_freshness` | Market data age | < 24h |
+| `min_sample_size` | Sufficient backtest observations | >= 20 |
+| `validation_threshold` | Hypothesis passed walk-forward | passed |
+| `max_notional` | Single order size | < $10,000 |
+| `max_position` | Open positions count | < 3 |
+| `exposure_cap` | Total open exposure | < $50,000 |
+| `cooldown` | Time between orders (same instrument) | >= 300s |
+| `daily_loss_cap` | Realized daily loss | < $2,000 |
+| `duplicate_suppression` | No duplicate event processing | unique |
+| `concentration_guard` | Positions per instrument | < 2 |
+| `max_quantity` | Order quantity | < 1,000,000 |
+| `balance_check` | Sufficient exchange balance | >= notional |
+| `pending_order_check` | No conflicting pending orders | 0 pending |
+
+**Evidence:** `risk.jsonl` — all 14 gate verdicts per decision, with pass/fail, reason, value, threshold.
+
+### 6. Execute (Paper Trade)
+
+If all gates pass, the agent places a **limit order** on the corresponding stock perpetual via Bitget Demo API (`--paper-trading`):
+- Research symbol `RAAPLUSDT` maps to execution symbol `AAPLUSDT`
+- Position size is **ATR-based**: `quantity = max_risk / (SL_ATR_MULT * ATR)`, capped by notional limits
+- Stop-loss and take-profit are volatility-aware: SL = 3x ATR, TP = 6x ATR (2:1 reward/risk)
+- Orders rounded to Bitget's precision (price: 0.01, quantity: integer)
+
+### 7. Verify
+
+The agent queries Bitget Demo for the actual order status (`filled`, `cancelled`, `rejected`) and logs the exchange-confirmed result.
+
+### 8. Log
+
+Every stage is logged to structured, append-only evidence files:
+
+**Evidence:** `trades.jsonl` — entry/exit orders with Bitget `orderId`, `orderStatus`, side, price, size, PnL.
+
+---
+
+## Evidence Structure
+
+The agent produces structured evidence that judges can trace end-to-end:
+
+```
+artifacts/paper-trading/
+├── logs/                              # Append-only evidence (continuous timeline)
+│   ├── agent.log                      # Human-readable timeline — read this first
+│   ├── events.jsonl                   # Observe + hypothesis + validation
+│   ├── decisions.jsonl                # LLM selection + rationale
+│   ├── risk.jsonl                     # 14 gate verdicts per decision
+│   └── trades.jsonl                   # Entry/exit orders + PnL + Bitget orderIds
+├── positions_state.json               # Current open positions
+└── runs/                              # Per-run snapshots
+    └── <run-id>/
+        ├── manifest.json              # Run summary + aggregate metrics
+        └── report.html                # Visual evidence report
+```
+
+Every record carries `run_id` + `cycle_id` + `timestamp` — trace any trade across all 4 log files.
+
+Evidence logs: [GitHub Pages](https://samueldanso.github.io/factor-atlas/logs/) · [`artifacts/paper-trading/logs/`](artifacts/paper-trading/logs/)
+
+---
+
+## Autonomous Runner
+
+The agent runs continuously on a 4-hour interval via GitHub Actions. Each round:
+
+1. Fetches live rToken SPOT data for all 4 instruments
+2. Evaluates exits on open positions (ATR-based SL/TP or max-hold 24h)
+3. Runs the full propose → validate → decide → gate → execute cycle
+4. Commits evidence back to the repository
+
+```bash
+# Run locally (single round)
+uv run python -m factor_atlas run --mode demo --cycles 4
+
+# Run continuously (every 4 hours)
+uv run python -m factor_atlas run --mode demo --cycles 4 --continuous --interval 14400
+
+# GitHub Actions: runs automatically every 4h, commits evidence to repo
+```
+
+---
+
+## Two-Layer Instrument Architecture
 
 | Layer | Symbols | Category | Purpose |
 |-------|---------|----------|---------|
 | **Research** (rToken SPOT) | `RAAPLUSDT` · `RNVDAUSDT` · `RTSLAUSDT` · `RMETAUSDT` | SPOT | 24/7 market data, factor analysis, hypothesis validation |
 | **Execution** (Stock Perps) | `AAPLUSDT` · `NVDAUSDT` · `TSLAUSDT` · `METAUSDT` | USDT-FUTURES | Demo paper trading, order placement, fill verification |
 
-**Why two layers?** rTokens (Reality tokens) provide 24/7 price data for US stocks on Bitget — ideal for continuous factor research. Execution routes through USDT-margined stock perpetual contracts because rToken SPOT order placement is not available in the Demo environment. Both layers track the same underlying assets (Apple, NVIDIA, Tesla, Meta). The agent maps `RAAPLUSDT` → `AAPLUSDT` automatically during reconciliation.
-
----
-
-## What It Does
-
-Every cycle, the agent autonomously:
-
-1. **Observes** — pulls live rToken SPOT price data (`RAAPLUSDT`, `RNVDAUSDT`, etc.) via Bitget API
-2. **Proposes** — Claude Sonnet 4.6 (AWS Bedrock) proposes factor hypotheses from a fixed vocabulary
-3. **Validates** — walk-forward backtest on historical data → Sharpe, Sortino, drawdown, win rate
-4. **Decides** — LLM selects the strongest validated hypothesis and proposes a trade
-5. **Risk gates** — 14 deterministic gates verify: positions, balance, exposure, cooldowns, concentration
-6. **Executes** — if all gates pass, places a limit order on stock perp (`AAPLUSDT`) via Bitget Demo (`--paper-trading`)
-7. **Verifies** — queries Bitget Demo for actual `orderStatus` (`filled`, `cancelled`, `rejected`)
-8. **Records** — logs full trace: event → hypothesis → decision rationale → gate results → order outcome
-
-If factors don't support a trade, the agent explicitly decides **not to trade** and logs why.
-
----
-
-## Paper Trading Results
-
-| Metric | Value | Label |
-|--------|-------|-------|
-| Total closed trades | 3 | observed |
-| Win rate | 66.7% | observed |
-| Sharpe ratio | 3.46 | observed |
-| Sortino ratio | 4.79 | observed |
-| Max drawdown | $7.11 | observed |
-| Avg hold time | 25 hours | observed |
-| Turnover | $1,548.64 | observed |
-
-Test period: September 12–14, 2026 (Demo paper trading). All values observed from actual execution, not backtests.
-
-### Sample Cycle — Accepted Trade
-
-```
-Cycle: AAPLUSDT
-  timestamp:    2026-09-12T03:50:00Z
-  Hypothesis:   mean_reversion — price below EMA, expect bounce
-  Validation:   Sharpe 0.42 (walk-forward, 90-day window)
-  Decision:     BUY @ $330.77, qty 1
-  Gates:        14/14 passed (positions 0 < 3, balance OK, exposure OK)
-  orderStatus:  filled (orderId 1483324512122851328)
-  Result:       Position opened, balance updated
-```
-
-### Sample Cycle — Rejected Trade
-
-```
-Cycle: TSLAUSDT
-  timestamp:    2026-09-12T04:15:00Z
-  Hypothesis:   volatility_breakout — ATR expansion signals directional move
-  Validation:   Sharpe 0.31 (walk-forward, 90-day window)
-  Decision:     BUY @ $357.99, qty 1
-  Gates:        FAILED — max_position: positions 3 >= 3
-  orderStatus:  rejected (risk gate veto)
-  Result:       No position opened. Agent waiting for next cycle.
-```
-
-### Sample Cycle — No Trade
-
-```
-Cycle: NVDAUSDT
-  timestamp:    2026-09-12T04:30:00Z
-  Hypothesis:   None — LLM found no factor with sufficient evidence
-  Decision:     NO TRADE
-  Result:       Agent chose not to trade. Factors did not align.
-```
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Market Event                          │
-│  rToken SPOT data: RAAPLUSDT, RNVDAUSDT, RTSLAUSDT ...  │
-│         (24/7 price data from Bitget SPOT API)           │
-└─────────────┬───────────────────────────────────────────┘
-              ▼
-┌─────────────────────────────────────────────────────────┐
-│              LLM Factor Proposer                         │
-│    Claude Sonnet 4.6 proposes from fixed vocabulary:     │
-│    momentum · mean_reversion · volatility_breakout       │
-│    volume_spike · ema_crossover                          │
-└─────────────┬───────────────────────────────────────────┘
-              ▼
-┌─────────────────────────────────────────────────────────┐
-│           Deterministic Validation                       │
-│    Walk-forward backtest on historical data               │
-│    Sharpe · Sortino · drawdown · win rate · turnover     │
-└─────────────┬───────────────────────────────────────────┘
-              ▼
-┌─────────────────────────────────────────────────────────┐
-│              LLM Trade Decision                          │
-│    Selects strongest validated hypothesis                 │
-│    Outputs: instrument, side, price, quantity, rationale │
-└─────────────┬───────────────────────────────────────────┘
-              ▼
-┌─────────────────────────────────────────────────────────┐
-│              Risk Gate Layer (14 gates)                   │
-│    balance_check ✓  max_position ✓  exposure_cap ✓       │
-│    cooldown ✓  concentration ✓  pending_order_check ✓    │
-│    daily_loss_cap ✓  data_freshness ✓  max_notional ✓    │
-│    max_quantity ✓  duplicate ✓  validation ✓  ...         │
-└─────────────┬──────────────────────┬────────────────────┘
-              │ ALL PASS             │ ANY FAIL
-              ▼                      ▼
-┌──────────────────────┐  ┌──────────────────────────────┐
-│   Bitget Demo API    │  │   Order Rejected             │
-│   Stock perp order   │  │   Log gate + reason          │
-│   AAPLUSDT (FUTURES) │  │   "positions 3 >= 3"         │
-│   --paper-trading    │  │                              │
-└─────────┬────────────┘  └──────────────────────────────┘
-          ▼
-┌──────────────────────┐
-│   Verify Order       │
-│   Query orderStatus  │
-│   filled/cancelled?  │
-└─────────┬────────────┘
-          ▼
-┌──────────────────────┐
-│   Audit Log (JSONL)  │
-│   + Evidence Report  │
-└──────────────────────┘
-```
+rTokens provide 24/7 price data for US stocks — ideal for continuous factor research. Execution routes through USDT-margined stock perpetual contracts (rToken SPOT orders not available in Demo). The agent maps `RAAPLUSDT` → `AAPLUSDT` automatically.
 
 ---
 
@@ -164,12 +179,12 @@ How FactorAtlas maps to [Bitget AI Genesis S2 — Agentic Trading](https://www.b
 
 | Criterion | How FactorAtlas addresses it |
 |-----------|------------------------------|
-| **Paper trading metrics** (Sharpe, drawdown, win rate) | Observed from Demo execution: Sharpe 3.46, drawdown $7.11, win rate 66.7% |
-| **Decision explainability** | Every cycle logs: market data → hypothesis → validation scores → LLM rationale → gate results → order outcome |
-| **Agent architecture quality** | Typed Python modules, 312 tests, mypy clean; LLM bounded by factor vocabulary and risk gates |
-| **Risk control layer** | 14 deterministic gates; LLM cannot bypass; exchange-verified balances and positions |
-| **Autonomous loop** | `observe → propose → validate → decide → gate → execute → verify → log` — no human approval pause |
-| **Complete event→decision→execution flow** | Full JSONL audit trail with `timestamp`, `orderId`, `orderStatus`, instrument, side, price, quantity |
+| **Paper trading Sharpe, drawdown, win rate** | Observed from Demo execution, accumulating daily via automated runner |
+| **Decision explainability** | Every cycle: market data → LLM hypothesis + rationale → validation scores → LLM selection rationale → 14 gate verdicts → order outcome. All in structured JSONL. |
+| **Agent architecture quality** | Typed Python, 326 tests, mypy clean; LLM bounded by factor vocabulary and risk gates; ATR-based sizing; structured evidence logging |
+| **Risk control layer effectiveness** | 14 deterministic gates; LLM cannot bypass; exchange-verified balances/positions; ATR-based stop-loss/take-profit |
+| **Autonomous loop** | Runs every 4h via GitHub Actions; `observe → propose → validate → decide → gate → execute → verify → log` — no human approval |
+| **Event → decision → execution flow** | 4 structured log files: `events.jsonl` → `decisions.jsonl` → `risk.jsonl` → `trades.jsonl`, linked by `run_id` + `cycle_id` |
 
 ---
 
@@ -182,17 +197,17 @@ uv sync
 # Fixture mode — no credentials needed, deterministic
 uv run python -m factor_atlas run --mode fixture --cycles 2
 
-# Demo mode — requires Bitget Demo API + AWS Bedrock credentials
+# Demo mode — requires Bitget Demo API + Qwen API key
 uv run python -m factor_atlas run --mode demo --cycles 4
 
+# Continuous mode — autonomous runner
+uv run python -m factor_atlas run --mode demo --cycles 4 --continuous --interval 14400
+
 # Generate evidence report from a run
-uv run python -m factor_atlas report --run-dir artifacts/paper-trading/<run-id>
+uv run python -m factor_atlas report --run-dir artifacts/paper-trading/runs/<run-id>
 
 # Check system status
 uv run python -m factor_atlas status
-
-# View trade history
-uv run python -m factor_atlas history
 
 # Run tests
 uv run pytest
@@ -201,66 +216,13 @@ uv run pytest
 ### Environment Variables (Demo mode)
 
 ```bash
-BITGET_API_KEY=...
-BITGET_SECRET_KEY=...
-BITGET_PASSPHRASE=...
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_DEFAULT_REGION=us-east-1
+BITGET_API_KEY=...          # Bitget Demo API
+BITGET_SECRET_KEY=...       # Bitget Demo API
+BITGET_PASSPHRASE=...       # Bitget Demo API
+BITGET_QWEN_API_KEY=...     # Qwen 3.8 Max (Bitget hackathon endpoint)
 ```
 
----
-
-## Evidence Files
-
-Each run produces:
-
-```
-artifacts/paper-trading/<run-id>/
-  paper_log.jsonl       # Every order: instrument, side, price, qty, gates, orderStatus
-  audit_log.jsonl       # Full event chain: observe → propose → evaluate → decide → gate → execute
-  manifest.json         # Run metadata: timestamp, LLM model, metrics, config hash
-  evidence_report.html  # Visual report for judges (open in browser)
-```
-
-Evidence logs: [GitHub Pages](https://samueldanso.github.io/factor-atlas/logs/) · [`artifacts/paper-trading/logs/`](artifacts/paper-trading/logs/)
-
----
-
-## Risk Controls
-
-The agent cannot bypass risk gates. If any gate fails, the trade is rejected — the LLM has no override.
-
-| Gate | What it checks | Threshold |
-|------|---------------|-----------|
-| `max_position` | Open positions count | < 3 |
-| `balance_check` | Sufficient balance on exchange | ≥ order notional |
-| `exposure_cap` | Total open exposure | < $50,000 |
-| `max_notional` | Single order size | < $10,000 |
-| `max_quantity` | Order quantity | < 1,000,000 |
-| `concentration_guard` | Positions per instrument | < 2 |
-| `cooldown` | Time between orders (same instrument) | ≥ 300s |
-| `daily_loss_cap` | Realized daily loss | < $2,000 |
-| `data_freshness` | Market data age | < 24h |
-| `pending_order_check` | No conflicting pending orders | 0 pending |
-| `duplicate_suppression` | No duplicate event processing | unique |
-| `validation_threshold` | Hypothesis must pass walk-forward | passed |
-| `min_sample_size` | Sufficient observations | ≥ 20 |
-| `factor_allowlist` | Factor in approved vocabulary | in set |
-
----
-
-## Factor Vocabulary
-
-| Factor | Description |
-|--------|------------|
-| `momentum` | Price trend continuation based on lookback returns |
-| `mean_reversion` | Price deviation from moving average, expect revert |
-| `volatility_breakout` | ATR expansion signals directional move |
-| `volume_spike` | Abnormal volume indicates institutional activity |
-| `ema_crossover` | Short/long EMA crossover signals trend change |
-
-The LLM can only propose from this fixed set. It cannot invent factors or generate arbitrary code.
+AWS Bedrock (Claude Sonnet 4.6) is supported as fallback if `BITGET_QWEN_API_KEY` is not set.
 
 ---
 
@@ -270,7 +232,7 @@ The LLM can only propose from this fixed set. It cannot invent factors or genera
 - **No withdrawals.** Withdrawal API is not implemented or exposed.
 - **No credentials in code.** API keys loaded from environment variables only.
 - **Risk gates are authoritative.** The LLM proposes; gates decide. A veto is final.
-- **Append-only audit.** Every decision is logged and cannot be edited retroactively.
+- **Append-only evidence.** Every decision is logged to structured JSONL and cannot be edited retroactively.
 
 ---
 
@@ -279,18 +241,23 @@ The LLM can only propose from this fixed set. It cannot invent factors or genera
 | Component | Technology |
 |-----------|-----------|
 | Language | Python 3.11 (`uv` managed) |
-| LLM | Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6` via AWS Bedrock) |
+| LLM (primary) | Qwen 3.8 Max via Bitget hackathon endpoint (`hackathon.bitgetops.com/v1`) |
+| LLM (fallback) | Claude Sonnet 4.6 via AWS Bedrock |
 | Exchange | Bitget Demo API via `bgc` CLI (`--paper-trading`) |
-| Research layer | rToken SPOT: `RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT` (24/7 market data) |
-| Execution layer | USDT-FUTURES stock perps: `AAPLUSDT`, `NVDAUSDT`, `TSLAUSDT`, `METAUSDT` (Demo orders) |
-| Symbol mapping | `RAAPLUSDT` → `AAPLUSDT`, `RNVDAUSDT` → `NVDAUSDT`, etc. (auto-reconciled) |
-| Tests | 312 passing (`pytest`), `mypy` clean, `ruff` clean |
+| Position sizing | ATR-based: `max_risk / (SL_ATR_MULT * ATR)`, capped by notional limits |
+| Exit management | ATR-based SL (3x ATR) / TP (6x ATR) / max-hold (24h) |
+| Scheduling | GitHub Actions cron (every 4h) + `--continuous` CLI mode |
+| Evidence | 4 structured JSONL files + human-readable `agent.log` |
+| Research layer | rToken SPOT: `RAAPLUSDT`, `RNVDAUSDT`, `RTSLAUSDT`, `RMETAUSDT` |
+| Execution layer | USDT-FUTURES perps: `AAPLUSDT`, `NVDAUSDT`, `TSLAUSDT`, `METAUSDT` |
+| Tests | 326 passing (`pytest`), `mypy` clean, `ruff` clean |
 
 ---
 
 ## LLM Disclosure
 
-- **Model**: Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`) via AWS Bedrock
+- **Primary model**: Qwen 3.8 Max via Bitget hackathon endpoint (`hackathon.bitgetops.com/v1`)
+- **Fallback model**: Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`) via AWS Bedrock
 - **Role**: Proposes factor hypotheses and selects trades from validated candidates
 - **Bounded**: Fixed factor vocabulary, deterministic validation, 14 risk gates
 - **Cannot**: Generate code, bypass gates, invent data, place orders directly, access live funds

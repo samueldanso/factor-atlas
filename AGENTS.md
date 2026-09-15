@@ -71,15 +71,18 @@ Execution instruments (USDT-FUTURES stock perpetuals, Demo paper trading):
 BITGET_API_KEY
 BITGET_SECRET_KEY
 BITGET_PASSPHRASE
+BITGET_QWEN_API_KEY
 ```
 
+- AWS Bedrock credentials (`AWS_PROFILE` or `AWS_ACCESS_KEY_ID`) are optional fallback if Qwen is unavailable.
 - Competition-period paper runner writes run records under `artifacts/paper-trading/`. Never manufacture or backfill history from fixtures.
+- Structured evidence logs (events, decisions, risk, trades) are append-only under `artifacts/paper-trading/logs/`.
 
 ## Architecture contract
 
 ### LLM layer
 
-The LLM proposes hypotheses from a fixed factor vocabulary and selects trades from validated candidates. It cannot generate code, bypass risk gates, invent data, place live orders, or turn failed validation into a recommendation.
+The LLM (Qwen 3.8 Max via Bitget hackathon endpoint, or Claude Sonnet 4.6 via Bedrock as fallback) proposes hypotheses from a fixed factor vocabulary and selects trades from validated candidates. It cannot generate code, bypass risk gates, invent data, place live orders, or turn failed validation into a recommendation.
 
 ### Autonomous cycle
 
@@ -92,6 +95,29 @@ No human approval pause between validated decision and paper execution. Risk gat
 ### Risk gates (14)
 
 `factor_allowlist`, `data_freshness`, `min_sample_size`, `validation_threshold`, `max_notional`, `max_position`, `exposure_cap`, `cooldown`, `daily_loss_cap`, `duplicate_suppression`, `concentration_guard`, `max_quantity`, `balance_check`, `pending_order_check`
+
+### Evidence logging
+
+The agent writes structured evidence to `artifacts/paper-trading/logs/`:
+- `agent.log` — human-readable timeline
+- `events.jsonl` — observe + hypothesis + validation
+- `decisions.jsonl` — LLM selection + rationale
+- `risk.jsonl` — 14 gate verdicts per decision
+- `trades.jsonl` — entry/exit orders + PnL + Bitget orderIds
+
+All records carry `run_id` + `cycle_id` for end-to-end tracing.
+
+### Continuous runner
+
+```bash
+# Single run
+uv run python -m factor_atlas run --mode demo --cycles 4
+
+# Autonomous (every 4h)
+uv run python -m factor_atlas run --mode demo --cycles 4 --continuous --interval 14400
+
+# GitHub Actions cron runs every 4h automatically
+```
 
 ## Boundaries
 
