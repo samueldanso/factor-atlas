@@ -2,29 +2,209 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FactorAtlas — Evidence Logs</title>
   <style>
-    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 2rem; }
-    h1 { color: #58a6ff; }
-    a { color: #58a6ff; }
-    .log-list { list-style: none; padding: 0; }
-    .log-list li { margin: 0.5rem 0; }
-    .desc { color: #8b949e; margin-left: 1rem; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1.5rem;
+    }
+    .container { max-width: 720px; width: 100%; }
+    .header {
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid #21262d;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle { color: #8b949e; font-size: 0.95rem; line-height: 1.5; }
+    .badge {
+      display: inline-block;
+      background: #1f6feb22;
+      color: #58a6ff;
+      padding: 0.2rem 0.6rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-top: 0.75rem;
+    }
+    .section-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      margin-bottom: 0.75rem;
+    }
+    .log-grid { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 2rem; }
+    .log-card {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.875rem 1rem;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .log-card:hover {
+      border-color: #388bfd;
+      background: #1c2128;
+    }
+    .log-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .icon-event { background: #1f6feb22; color: #58a6ff; }
+    .icon-decision { background: #8957e522; color: #bc8cff; }
+    .icon-risk { background: #f8514922; color: #ff7b72; }
+    .icon-trade { background: #3fb95022; color: #56d364; }
+    .icon-agent { background: #d2992222; color: #e3b341; }
+    .log-info { flex: 1; min-width: 0; }
+    .log-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+    .log-desc { font-size: 0.8rem; color: #8b949e; margin-top: 0.15rem; }
+    .log-arrow { color: #484f58; font-size: 0.9rem; }
+
+    .flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 1.25rem;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+    .flow-step {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 0.65rem;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+    .flow-arrow { color: #484f58; font-size: 0.85rem; }
+    .step-event { background: #1f6feb22; color: #58a6ff; }
+    .step-decision { background: #8957e522; color: #bc8cff; }
+    .step-risk { background: #f8514922; color: #ff7b72; }
+    .step-trade { background: #3fb95022; color: #56d364; }
+
+    .footer {
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #21262d;
+      font-size: 0.8rem;
+      color: #484f58;
+      line-height: 1.6;
+    }
+    .footer a { color: #58a6ff; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <h1>FactorAtlas — Evidence Logs</h1>
-  <p>Structured evidence from the autonomous factor-discovery agent.</p>
-  <ul class="log-list">
-    <li><a href="agent.log">agent.log</a><span class="desc"> — Human-readable timeline (start here)</span></li>
-    <li><a href="events.jsonl">events.jsonl</a><span class="desc"> — Observe + hypothesis + validation</span></li>
-    <li><a href="decisions.jsonl">decisions.jsonl</a><span class="desc"> — LLM selection + rationale</span></li>
-    <li><a href="risk.jsonl">risk.jsonl</a><span class="desc"> — 14 risk gate verdicts</span></li>
-    <li><a href="trades.jsonl">trades.jsonl</a><span class="desc"> — Entry/exit orders + PnL</span></li>
-  </ul>
-  <p style="margin-top: 2rem; color: #8b949e;">
-    Each record carries run_id + cycle_id for cross-file tracing.
-    <br>Visual reports: <a href="../runs/">runs/</a>
-  </p>
+  <div class="container">
+    <div class="header">
+      <h1>FactorAtlas</h1>
+      <p class="subtitle">
+        Structured evidence from the autonomous factor-discovery agent.
+        Every trade is traceable from market event through hypothesis, validation,
+        risk check, to execution.
+      </p>
+      <span class="badge">Track 2: Agentic Trading &mdash; Factor Discovery Agent</span>
+    </div>
+
+    <p class="section-title">Agent Pipeline</p>
+    <div class="flow">
+      <span class="flow-step step-event">Observe</span>
+      <span class="flow-arrow">&rarr;</span>
+      <span class="flow-step step-event">Propose</span>
+      <span class="flow-arrow">&rarr;</span>
+      <span class="flow-step step-event">Validate</span>
+      <span class="flow-arrow">&rarr;</span>
+      <span class="flow-step step-decision">Decide</span>
+      <span class="flow-arrow">&rarr;</span>
+      <span class="flow-step step-risk">Gate</span>
+      <span class="flow-arrow">&rarr;</span>
+      <span class="flow-step step-trade">Execute</span>
+      <span class="flow-arrow">&rarr;</span>
+      <span class="flow-step step-trade">Verify</span>
+    </div>
+
+    <p class="section-title">Evidence Logs</p>
+    <div class="log-grid">
+      <a href="agent.log" class="log-card">
+        <div class="log-icon icon-agent">&#9776;</div>
+        <div class="log-info">
+          <div class="log-name">agent.log</div>
+          <div class="log-desc">Human-readable timeline &mdash; start here</div>
+        </div>
+        <span class="log-arrow">&rsaquo;</span>
+      </a>
+      <a href="events.jsonl" class="log-card">
+        <div class="log-icon icon-event">&#9670;</div>
+        <div class="log-info">
+          <div class="log-name">events.jsonl</div>
+          <div class="log-desc">Observe + hypothesis + validation results</div>
+        </div>
+        <span class="log-arrow">&rsaquo;</span>
+      </a>
+      <a href="decisions.jsonl" class="log-card">
+        <div class="log-icon icon-decision">&#9679;</div>
+        <div class="log-info">
+          <div class="log-name">decisions.jsonl</div>
+          <div class="log-desc">LLM selection + rationale (or decline reason)</div>
+        </div>
+        <span class="log-arrow">&rsaquo;</span>
+      </a>
+      <a href="risk.jsonl" class="log-card">
+        <div class="log-icon icon-risk">&#9632;</div>
+        <div class="log-info">
+          <div class="log-name">risk.jsonl</div>
+          <div class="log-desc">14 risk gate verdicts per decision</div>
+        </div>
+        <span class="log-arrow">&rsaquo;</span>
+      </a>
+      <a href="trades.jsonl" class="log-card">
+        <div class="log-icon icon-trade">&#9650;</div>
+        <div class="log-info">
+          <div class="log-name">trades.jsonl</div>
+          <div class="log-desc">Entry/exit orders + PnL + Bitget orderIds</div>
+        </div>
+        <span class="log-arrow">&rsaquo;</span>
+      </a>
+    </div>
+
+    <div class="footer">
+      Every record carries <code>run_id</code> + <code>cycle_id</code> for cross-file tracing.<br>
+      Visual reports: <a href="../runs/">runs/</a> &middot;
+      Source: <a href="https://github.com/samueldanso/factor-atlas">GitHub</a> &middot;
+      LLM: Qwen 3.8 Max via Bitget
+    </div>
+  </div>
 </body>
 </html>

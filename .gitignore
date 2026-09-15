@@ -7,6 +7,11 @@ __pycache__/
 *.py[cod]
 data/
 artifacts/
+!artifacts/paper-trading/
+artifacts/paper-trading/*
+!artifacts/paper-trading/logs/
+!artifacts/paper-trading/runs/
+!artifacts/paper-trading/positions_state.json
 resources/
 .superpowers/
 tasks/
